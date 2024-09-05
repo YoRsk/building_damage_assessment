@@ -17,13 +17,13 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
     with tqdm(total=num_val_batches, desc='validation', unit='img') as pbar:
         if (traintype == 'both'):
             for batch in dataloader:
-                preimage, postimage, true_masks = batch['preimage'], batch['image'], batch['mask']
+                preimage, postimage, true_masks = batch['preimage'], batch['postimage'], batch['postmask']
 
                 preimage = preimage.to(device=device, dtype=torch.float32)
                 postimage = postimage.to(device=device, dtype=torch.float32)
                 true_masks = true_masks.to(device=device, dtype=torch.long)
                 mask_true = F.one_hot(true_masks, 5).permute(0, 3, 1, 2).float()
-                with torch.cuda.amp.autocast(enabled=ampbool):
+                with torch.amp.autocast('cuda', enabled=ampbool):
                     # predict the mask
                     mask_pred = net(preimage, postimage)
                     # convert to one-hot format
@@ -56,12 +56,12 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
                 pbar.set_postfix(**{'loss (batch)': loss.item()})
         if (traintype == 'post'):
             for batch in dataloader:
-                postimage, true_masks = batch['image'], batch['mask']
+                postimage, true_masks = batch['postimage'], batch['postmask']
 
                 postimage = postimage.to(device=device, dtype=torch.float32)
                 true_masks = true_masks.to(device=device, dtype=torch.long)
                 mask_true = F.one_hot(true_masks, 5).permute(0, 3, 1, 2).float()
-                with torch.cuda.amp.autocast(enabled=ampbool):
+                with torch.amp.autocast('cuda', enabled=ampbool):
                     # predict the mask
                     mask_pred = net(postimage)
                     # convert to one-hot format
