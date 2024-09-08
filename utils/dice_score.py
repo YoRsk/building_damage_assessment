@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 
-
+# Dice系数是一种集合的相似度度量函数，用于计算2个样本的相似度。值在0 - 1之间，越大表示2个样本越相似，在语义分割中，表示的就是预测结果pred和groundtruth之间越相似。
 def dice_coeff(input: Tensor, target: Tensor, reduce_batch_first: bool = False, epsilon=1e-6):
     # Average of Dice coefficient for all batches, or for a single mask
     assert input.size() == target.size()
@@ -31,7 +31,8 @@ def multiclass_dice_coeff(input: Tensor, target: Tensor, reduce_batch_first: boo
         dice += dice_coeff(input[:, channel, ...], target[:, channel, ...], reduce_batch_first, epsilon)
     return dice / input.shape[1]
 
-
+# Dice Loss比较适用于样本极度不均的情况，一般的情况下，使用 Dice Loss 会对反向传播造成不利的影响，容易使训练变得不稳定。
+# 所以在一般情况下，还是使用交叉熵损失函数。
 def dice_loss(input: Tensor, target: Tensor, multiclass: bool = False):
     # Dice loss (objective to minimize) between 0 and 1
     assert input.size() == target.size()
