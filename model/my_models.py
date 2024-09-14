@@ -19,8 +19,15 @@ class SiameseUNetWithResnet50Encoder(nn.Module):
         #weights=ResNet50_Weights.IMAGENET1K_V1
         down_blocks = []
         up_blocks = []
+
+        # input_block 包含了ResNet的前三个层（通常是卷积层、BN层、ReLU层等）。这些层用于提取特征。
+        # CNN卷积层的基本组成单元标配：Conv + BN +ReLU 三剑客
         self.input_block = nn.Sequential(*list(resnet.children()))[:3]
+        # input_pool 保存了第四个层，通常是最大池化层。
+        #池化（Pooling）：也称为欠采样或下采样。主要用于特征降维，
+        # 压缩数据和参数的数量，减小过拟合，同时提高模型的容错性
         self.input_pool = list(resnet.children())[3]
+
         for bottleneck in list(resnet.children()):
             if isinstance(bottleneck, nn.Sequential):
                 down_blocks.append(bottleneck)
