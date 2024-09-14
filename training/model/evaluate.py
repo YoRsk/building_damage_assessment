@@ -15,6 +15,7 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
     epoch_loss = 0
     with tqdm(total=num_val_batches, desc='validation', unit='img') as pbar:
         if (traintype == 'both'):
+            loss = 0
             for batch in dataloader:
                 preimage, postimage, true_masks = batch['preimage'], batch['postimage'], batch['postmask']
 
