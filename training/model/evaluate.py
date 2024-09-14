@@ -1,7 +1,6 @@
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
-from segmentation_models_pytorch.losses.focal import FocalLoss
 from utils.dice_score import multiclass_dice_coeff, dice_coeff, dice_loss
 import torch.nn as nn
 

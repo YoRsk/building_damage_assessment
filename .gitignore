@@ -4,3 +4,12 @@
 .idea/workspace.xml
 .idea/inspectionProfiles/profiles_settings.xml
 training/runs
+.idea/.gitignore
+.idea/building_damage_assessment.iml
+.idea/modules.xml
+.idea/inspectionProfiles/Project_Default.xml
+training/model/__pycache__/evaluate.cpython-311.pyc
+training/model/__pycache__/my_functions.cpython-311.pyc
+training/model/__pycache__/my_models.cpython-311.pyc
+training/utils/__pycache__/data_loading.cpython-311.pyc
+training/utils/__pycache__/dice_score.cpython-311.pyc
