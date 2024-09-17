@@ -15,3 +15,6 @@ training/utils/__pycache__/data_loading.cpython-311.pyc
 training/utils/__pycache__/dice_score.cpython-311.pyc
 training/checkpoints
 training/tensorboard_logs
+model/__pycache__/evaluate.cpython-311.pyc
+model/__pycache__/my_functions.cpython-311.pyc
+model/__pycache__/my_models.cpython-311.pyc
