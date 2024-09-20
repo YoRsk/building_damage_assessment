@@ -4,7 +4,7 @@ ResNet-50 Architecture.
 
 import torch
 import torch.nn as nn
-from .cbam import CBAM
+from cbam import CBAM
 
 class BottleNeck(nn.Module):
     '''Bottleneck modules
