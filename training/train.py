@@ -1,4 +1,5 @@
 from model.my_models import SiameseUNetWithResnet50Encoder
+# from model.cbam_res50 import ResNet50
 from model.evaluate import evaluate
 from utils.data_loading import SatelliteDataset
 from utils.dice_score import dice_loss
@@ -56,7 +57,8 @@ pre_dir_test_mask = img_home_path + "/Test/Pre/Label512/"
 # post_dir_val_mask = Path('.\\Dataset\\Validation\\Post\\Label512\\')
 # pre_dir_val_img = Path('.\\Dataset\\Validation\\Pre\\Image512\\')
 # pre_dir_val_mask = Path('.\\Dataset\\Validation\\Pre\\Label512\\')
-dir_checkpoint = Path('checkpoints/v_1.2_lr_2e-4/')
+dir_checkpoint = Path('checkpoints/v_1.2_lr_1e-4/')
+# dir_checkpoint = Path('checkpoints/v_1.2_lr_5e-4_cbam/')
 # dir_checkpoint = Path('checkpoints/v_1.0_lr_10-6/')
 
 closs = nn.CrossEntropyLoss()
@@ -144,10 +146,12 @@ def train_net(net,
     test_loader = DataLoader(test_set, shuffle=False, drop_last=True, **loader_args)
 
     # 4. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
-    optimizer = optim.RMSprop(net.parameters(), lr=learning_rate, weight_decay=1e-6, momentum=0.9, foreach=True)
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5,11,17,23,29,33], gamma=0.5)
-
+    #optimizer = optim.RMSprop(net.parameters(), lr=learning_rate, weight_decay=1e-6, momentum=0.9, foreach=True)
+    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5,11,17,23,29,33,55,78,100], gamma=0.30)
+    #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, verbose=True)
     # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,6,9,12,15,18,19,20,33,47,50,60,70,90,110,130,150,170,180,190], gamma=0.5)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
     grad_scaler = torch.amp.GradScaler('cuda', enabled=ampbool)
     criterion = closs
     
@@ -168,7 +172,7 @@ def train_net(net,
     for epoch in range(start_epoch, start_epoch + epochs):
         net.train()
         epoch_loss = 0
-        epoch_steps = 0
+        epoch_steps = 0 
         nancount = 0
         with tqdm(total=n_train, desc=f'Epoch {epoch}/{epochs}', unit='img') as pbar:
             for batch in train_loader:
@@ -289,13 +293,13 @@ def train_net(net,
         #     if task:
         #         task.upload_artifact(f"checkpoint_epoch_{epoch}", checkpoint_path)
         #         # 记录指标到 ClearML
-        # if task:
-        #     task.get_logger().report_scalar("Accuracy", "train", value=train_acc, iteration=epoch)
-        #     task.get_logger().report_scalar("Precision", "train", value=train_prec, iteration=epoch)
-        #     task.get_logger().report_scalar("Recall", "train", value=train_rec, iteration=epoch)
-        #     task.get_logger().report_scalar("Loss", "train", value=train_loss, iteration=epoch)
-        #     task.get_logger().report_scalar("Dice Score", "validation", value=val_score, iteration=epoch)
-        #     task.get_logger().report_scalar("Loss", "validation", value=val_loss, iteration=epoch)
+        if task:
+             task.get_logger().report_scalar("Accuracy", "train", value=train_acc, iteration=epoch)
+             task.get_logger().report_scalar("Precision", "train", value=train_prec, iteration=epoch)
+             task.get_logger().report_scalar("Recall", "train", value=train_rec, iteration=epoch)
+             task.get_logger().report_scalar("Loss", "train", value=train_loss, iteration=epoch)
+             task.get_logger().report_scalar("Dice Score", "validation", value=val_score, iteration=epoch)
+             task.get_logger().report_scalar("Loss", "validation", value=val_loss, iteration=epoch)
         ###### 定期保存训练数据到文件
         if epoch % 5 == 0 or epoch == epochs - 1:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -457,17 +461,17 @@ def EvaluateFolder(folderpath,net,train_percent,val_percent):
         print(val_loss)
 classes = 5
 bilinear = True
-# loadstate = False
-loadstate = True
-load = './checkpoints/v_1.2_lr_2e-4/branch12checkpoint_epoch_10.pth'
+loadstate = False
+# loadstate = True
+# load = './checkpoints/v_1.2_lr_5e-4/best.pth'
 # load = './checkpoints/Vgg19SiamConc/checkpoint_epoch12.pth'
-start_epoch = 11
+start_epoch = 1
 # start_epoch = 13
-epochs = 30
+epochs = 100
 batch_size = 4
 batch_size = 4
 # batch_size = 1
-lr = 2e-4
+lr = 1.38e-4
 # lr = 1e-6
 scale = 1
 train = 1
@@ -480,6 +484,7 @@ traintype = 'both'
 gradclip = 1.0
 # net = SiamUNetConCVgg19()
 net = SiameseUNetWithResnet50Encoder()
+# net = ResNet50()
 model_parameters = filter(lambda p: p.requires_grad, net.parameters())
 params = sum([np.prod(p.size()) for p in model_parameters])
 mem_params = sum([param.nelement()*param.element_size() for param in net.parameters()])
@@ -487,23 +492,25 @@ mem_bufs = sum([buf.nelement()*buf.element_size() for buf in net.buffers()])
 mem = mem_params + mem_bufs
 
 if __name__ == '__main__':
+    task = Task.init(project_name="damage-assessment", task_name="train SiameseUNetWithResnet50Encoder 0920")
+
     # task_id_to_resume = "432ff2e399124e32977edbeb13c7e30a"  # 替换为您想恢复的任务 ID
 
     # # 初始化 ClearML Task
     # task = Task.get_task(task_id=task_id_to_resume) 
     # task.mark_started(force=True)
     # # 记录超参数
-    # task.connect({
-    #     "batch_size": batch_size,
-    #     "learning_rate": lr,
-    #     "epochs": epochs,
-    #     "img_scale": scale,
-    #     "train_percent": train,
-    #     "val_percent": val,
-    #     "ampbool": ampbool,
-    #     "traintype": traintype,
-    #     "gradient_clipping": gradclip
-    # })
+    task.connect({
+         "batch_size": batch_size,
+         "learning_rate": lr,
+         "epochs": epochs,
+         "img_scale": scale,
+         "train_percent": train,
+         "val_percent": val,
+         "ampbool": ampbool,
+         "traintype": traintype,
+         "gradient_clipping": gradclip
+     })
     device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
     #net = SiamUNetDiff()
     #net = SiamUNetConC()
