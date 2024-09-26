@@ -28,7 +28,7 @@ from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
 from clearml import Task
-
+from torchmetrics import JaccardIndex
 logger = logging.getLogger(__name__)
 
 # 设置 logger 的级别为 DEBUG
@@ -159,9 +159,12 @@ def train_net(net,
     train_accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=5, validate_args=False).to(device)
     train_precision = torchmetrics.Precision(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
     train_recall = torchmetrics.Recall(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
+    train_f1 = torchmetrics.F1Score(task='multiclass', num_classes=5, average='macro').to(device)
+    train_iou = JaccardIndex(task="multiclass", num_classes=5).to(device)
     
     #TODO: 是否加入早停
     #early_stopping = EarlyStopping(patience=3, verbose=True)
+    #TODO：是否加入IoU
 
     # 5.1. 获取 ClearML 任务对象
     task = Task.current_task()
@@ -219,6 +222,8 @@ def train_net(net,
                 train_accuracy.update(masks_pred, post_masks)
                 train_precision.update(masks_pred, post_masks)
                 train_recall.update(masks_pred, post_masks)
+                train_f1.update(masks_pred, post_masks)
+                train_iou.update(masks_pred.argmax(dim=1), post_masks)
                 
                 pbar.update(postimage.shape[0])
                 epoch_steps += 1 #已经处理的批次数
@@ -235,17 +240,24 @@ def train_net(net,
                     'loss': float(epoch_loss / epoch_steps),
                     'accuracy': float(train_accuracy.compute().item()),
                     'precision': float(train_precision.compute().item()),
-                    'recall': float(train_recall.compute().item())
+                    'recall': float(train_recall.compute().item()),
+                    'f1_score': float(train_f1.compute().item()),
+                    'iou': float(train_iou.compute().item())
                 })
                 
         # 计算最终的训练指标
         train_acc = train_accuracy.compute()
         train_prec = train_precision.compute()
         train_rec = train_recall.compute()
+        train_f1_score = train_f1.compute()
+        train_iou_score = train_iou.compute()
         train_loss = epoch_loss / len(train_loader)
         
         # 使用现有的evaluate函数进行验证
-        val_score, val_class_scores, val_loss = evaluate(net, dataloader=val_loader, device=device, ampbool=ampbool, traintype=traintype)
+        val_score, val_class_scores, val_loss, val_f1, val_iou = evaluate(net, dataloader=val_loader, device=device, ampbool=ampbool, traintype=traintype)
+        # 获取当前的学习率
+        current_lr = optimizer.param_groups[0]['lr']
+        # 更新学习率
         scheduler.step()
         
         ####### 
@@ -258,8 +270,11 @@ def train_net(net,
             "val_accuracy": val_score,
             "train_precision": train_prec.item(),
             "train_recall": train_rec.item(),
+            "train_f1_score": train_f1_score.item(),
+            "val_f1_score": val_f1.item(),
             "val_class_scores": [score.item() for score in val_class_scores],
-            "nan_count": nancount
+            "train_iou": train_iou_score.item(),
+            "val_iou": val_iou.item()
         }
         training_data["training_history"].append(epoch_data)
 
@@ -271,6 +286,10 @@ def train_net(net,
         writer.add_scalar('Accuracy/validation', val_score, epoch)
         writer.add_scalar('Precision/train', train_prec, epoch)
         writer.add_scalar('Recall/train', train_rec, epoch)
+        writer.add_scalar('F1 Score/train', train_f1_score, epoch)
+        writer.add_scalar('F1 Score/validation', val_f1, epoch)
+        writer.add_scalar('IoU/train', train_iou_score, epoch)
+        writer.add_scalar('IoU/validation', val_iou, epoch)
         for i, class_score in enumerate(val_class_scores):
             writer.add_scalar(f'Dice Score/class_{i}', class_score, epoch)
         ############
@@ -278,9 +297,9 @@ def train_net(net,
 
         # 打印训练和验证结果
         print(f'Epoch {epoch}')
-        print(f'Training - Accuracy: {train_acc:.4f}, Precision: {train_prec:.4f}, Recall: {train_rec:.4f}')
+        print(f'Training - Accuracy: {train_acc:.4f}, Precision: {train_prec:.4f}, Recall: {train_rec:.4f}, F1 Score: {train_f1_score:.4f}, IoU: {train_iou_score:.4f}')
         print(f'Training Loss: {train_loss:.4f}')
-        print(f'Validation - Dice Score: {val_score:.4f}')
+        print(f'Validation - Dice Score: {val_score:.4f}, F1 Score: {val_f1:.4f}, IoU: {val_iou:.4f}')
         print(f'Validation - Class Dice Scores: {[f"{score:.4f}" for score in val_class_scores]}')
         print(f'Validation Loss: {val_loss:.4f}')
         print(f'NaN Count: {nancount}')
@@ -297,9 +316,14 @@ def train_net(net,
              task.get_logger().report_scalar("Accuracy", "train", value=train_acc, iteration=epoch)
              task.get_logger().report_scalar("Precision", "train", value=train_prec, iteration=epoch)
              task.get_logger().report_scalar("Recall", "train", value=train_rec, iteration=epoch)
+             task.get_logger().report_scalar("F1 Score", "train", value=train_f1_score, iteration=epoch)
              task.get_logger().report_scalar("Loss", "train", value=train_loss, iteration=epoch)
              task.get_logger().report_scalar("Dice Score", "validation", value=val_score, iteration=epoch)
+             task.get_logger().report_scalar("F1 Score", "validation", value=val_f1, iteration=epoch)
              task.get_logger().report_scalar("Loss", "validation", value=val_loss, iteration=epoch)
+             task.get_logger().report_scalar("Learning Rate", "", value=current_lr, iteration=epoch)
+             task.get_logger().report_scalar("IoU", "train", value=train_iou_score, iteration=epoch)
+             task.get_logger().report_scalar("IoU", "validation", value=val_iou, iteration=epoch)
         ###### 定期保存训练数据到文件
         if epoch % 5 == 0 or epoch == epochs - 1:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -312,9 +336,9 @@ def train_net(net,
                 print(f"捕获到异常：{e}")
         ######
     # Final evaluation on test set
-    test_score, test_class_scores, test_loss = evaluate(net, test_loader, device, ampbool, traintype)
+    test_score, test_class_scores, test_loss, test_f1, test_iou = evaluate(net, test_loader, device, ampbool, traintype)
     print('Final Test Results:')
-    print(f'Test - Dice Score: {test_score:.4f}')
+    print(f'Test - Dice Score: {test_score:.4f}, F1 Score: {test_f1:.4f}, IoU: {test_iou:.4f}')
     print(f'Test - Class Dice Scores: {[f"{score:.4f}" for score in test_class_scores]}')
     print(f'Test Loss: {test_loss:.4f}')
     ########

@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from utils.dice_score import multiclass_dice_coeff, dice_coeff, dice_loss
 import torch.nn as nn
-
+from torchmetrics import F1Score, JaccardIndex
 
 def evaluate(net, dataloader, device, ampbool, traintype='post'):
     with torch.no_grad():
@@ -86,4 +86,11 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
         # Fixes a potential division by zero error
         if num_val_batches == 0:
             return [dice_score, dice_score_class, epoch_loss]
-        return [dice_score / num_val_batches, [i / num_val_batches for i in dice_score_class], epoch_loss]
+        # F1 Score and IoU Score
+        f1_score = F1Score(task='multiclass', num_classes=5, average='macro').to(device)
+        f1_score.update(mask_pred.argmax(dim=1), true_masks)
+        f1 = f1_score.compute()
+        iou_score = JaccardIndex(task="multiclass", num_classes=5).to(device)
+        iou_score.update(mask_pred.argmax(dim=1), true_masks)
+        iou = iou_score.compute()
+        return [dice_score / num_val_batches, [i / num_val_batches for i in dice_score_class], epoch_loss, f1, iou]
