@@ -26,7 +26,7 @@ import json
 import os
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
-
+from training.utils.tensor_encoder import TensorEncoder
 from clearml import Task
 from torchmetrics import JaccardIndex
 logger = logging.getLogger(__name__)
@@ -330,7 +330,7 @@ def train_net(net,
             filename = f"training_log_{timestamp}.json"
             try: 
                 with open(os.path.join(save_dir, filename), 'w') as f:
-                    json.dump(training_data, f, indent=4)
+                    json.dump(training_data, f, indent=4, cls=TensorEncoder)
             except TypeError as e:
                 # 处理特定的异常
                 print(f"捕获到异常：{e}")
@@ -345,7 +345,7 @@ def train_net(net,
     # 保存最终结果
     final_filename = f"final_training_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(os.path.join(save_dir, final_filename), 'w') as f:
-        json.dump(training_data, f, indent=4)
+        json.dump(training_data, f, indent=4, cls=TensorEncoder)
 
 
     # 关闭 TensorBoard 写入器
