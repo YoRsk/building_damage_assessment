@@ -172,6 +172,7 @@ def train_net(net,
         print("Warning: No active ClearML task. Metrics will not be logged.")
 
     # 6. Begin training
+    saved_checkpoints = []
     for epoch in range(start_epoch, start_epoch + epochs):
         net.train()
         epoch_loss = 0
@@ -306,9 +307,17 @@ def train_net(net,
         
         if save_checkpoint:
             Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
-            checkpoint_path = str(dir_checkpoint / f'branch12checkpoint_epoch_{epoch}.pth')
+            checkpoint_path = str(dir_checkpoint / f'checkpoint_epoch_{epoch}.pth')
             torch.save(net.state_dict(), checkpoint_path)
+            saved_checkpoints.append(checkpoint_path)
             logging.info(f'Checkpoint {epoch} saved!')
+
+            # 只保留最后 5 个权重文件
+            if len(saved_checkpoints) > 5:
+                old_checkpoint = saved_checkpoints.pop(0)
+                os.remove(old_checkpoint)
+                logging.info(f'Deleted old checkpoint: {old_checkpoint}')
+
         #     if task:
         #         task.upload_artifact(f"checkpoint_epoch_{epoch}", checkpoint_path)
         #         # 记录指标到 ClearML
