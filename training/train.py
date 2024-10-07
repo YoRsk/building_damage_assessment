@@ -71,9 +71,30 @@ floss = FocalLoss(mode = 'multiclass',
                 normalized = False,
                 reduced_threshold = None)
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
+    # 确保 confusion_matrix 是 numpy 数组
+    if isinstance(confusion_matrix, torch.Tensor):
+        confusion_matrix = confusion_matrix.cpu().numpy()
+    
+    # 保存为 numpy 数组
+    np.save(f"{save_dir}/{filename_prefix}_confusion_matrix.npy", confusion_matrix)
+    
+    # 创建热力图
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(confusion_matrix, annot=True, fmt='d', cmap='Blues')
+    plt.title('Confusion Matrix')
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    
+    # 保存图片
+    plt.savefig(f"{save_dir}/{filename_prefix}_confusion_matrix.png")
+    plt.close()
 
 def train_net(net,
-               device,
+              device,
               start_epoch: int = 1,
               epochs: int = 5,
               batch_size: int = 1,
@@ -164,8 +185,6 @@ def train_net(net,
     
     #TODO: 是否加入早停
     #early_stopping = EarlyStopping(patience=3, verbose=True)
-    #TODO：是否加入IoU
-
     # 5.1. 获取 ClearML 任务对象
     task = Task.current_task()
     if task is None:
@@ -198,6 +217,7 @@ def train_net(net,
                             F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
                             multiclass=True
                         )
+                    # 可能用不了
                     elif traintype == 'pre':
                         masks_pred = net(preimage)
                         loss = criterion(masks_pred, pre_masks)
@@ -255,13 +275,12 @@ def train_net(net,
         train_loss = epoch_loss / len(train_loader)
         
         # 使用现有的evaluate函数进行验证
-        val_score, val_class_scores, val_loss, val_f1, val_iou = evaluate(net, dataloader=val_loader, device=device, ampbool=ampbool, traintype=traintype)
+        val_score, val_class_scores, val_loss, val_f1, val_iou, val_confusion_matrix = evaluate(net, dataloader=val_loader, device=device, ampbool=ampbool, traintype=traintype)
         # 获取当前的学习率
         current_lr = optimizer.param_groups[0]['lr']
         # 更新学习率
         scheduler.step()
-        
-        ####### 
+
         # 记录到本地文件
         epoch_data = {
             "epoch": epoch,
@@ -275,7 +294,8 @@ def train_net(net,
             "val_f1_score": val_f1.item(),
             "val_class_scores": [score.item() for score in val_class_scores],
             "train_iou": train_iou_score.item(),
-            "val_iou": val_iou.item()
+            "val_iou": val_iou.item(),
+            "learning_rate": current_lr
         }
         training_data["training_history"].append(epoch_data)
 
@@ -312,11 +332,13 @@ def train_net(net,
             saved_checkpoints.append(checkpoint_path)
             logging.info(f'Checkpoint {epoch} saved!')
 
-            # 只保留最后 5 个权重文件
-            if len(saved_checkpoints) > 5:
-                old_checkpoint = saved_checkpoints.pop(0)
-                os.remove(old_checkpoint)
-                logging.info(f'Deleted old checkpoint: {old_checkpoint}')
+            # 每 5 个 epoch 删除旧的权重文件
+            if epoch % 5 == 0 and len(saved_checkpoints) > 5:
+                checkpoints_to_delete = saved_checkpoints[:-5]
+                for old_checkpoint in checkpoints_to_delete:
+                    os.remove(old_checkpoint)
+                    logging.info(f'Deleted old checkpoint: {old_checkpoint}')
+                saved_checkpoints = saved_checkpoints[-5:]
 
         #     if task:
         #         task.upload_artifact(f"checkpoint_epoch_{epoch}", checkpoint_path)
@@ -341,11 +363,14 @@ def train_net(net,
                 with open(os.path.join(save_dir, filename), 'w') as f:
                     json.dump(training_data, f, indent=4, cls=TensorEncoder)
             except TypeError as e:
-                # 处理特定的异常
                 print(f"捕获到异常：{e}")
-        ######
+
+        # 保存混淆矩阵
+        if val_confusion_matrix is not None:
+            save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
+
     # Final evaluation on test set
-    test_score, test_class_scores, test_loss, test_f1, test_iou = evaluate(net, test_loader, device, ampbool, traintype)
+    test_score, test_class_scores, test_loss, test_f1, test_iou, test_confusion_matrix = evaluate(net, test_loader, device, ampbool, traintype)
     print('Final Test Results:')
     print(f'Test - Dice Score: {test_score:.4f}, F1 Score: {test_f1:.4f}, IoU: {test_iou:.4f}')
     print(f'Test - Class Dice Scores: {[f"{score:.4f}" for score in test_class_scores]}')
@@ -356,142 +381,23 @@ def train_net(net,
     with open(os.path.join(save_dir, final_filename), 'w') as f:
         json.dump(training_data, f, indent=4, cls=TensorEncoder)
 
-
     # 关闭 TensorBoard 写入器
     writer.close()
     ########
 
-    return train_loss, val_loss, test_loss
+    # 保存测试集的混淆矩阵
+    if test_confusion_matrix is not None:
+        save_confusion_matrix(test_confusion_matrix, save_dir, "final_test")
+
+    # 训练循环结束后
+    while len(saved_checkpoints) > 5:
+        old_checkpoint = saved_checkpoints.pop(0)
+        os.remove(old_checkpoint)
+        logging.info(f'Deleted old checkpoint: {old_checkpoint}')
+
+    return net
 
 
-    # return train_loss, val_loss, test_loss
-    # # 上传最佳模型
-    # task.upload_artifact("最佳模型", "./checkpoints/best_model.pth")
-    # task.close()
-def confusionmatrix(pred,true):
-    result = np.zeros((5,5))
-    for i in range(true.shape[1]):
-        for j in range(true.shape[2]):
-            result[true[0][i][j]][pred[0][i][j]] +=1
-    return result
-def modelconfusionmatrix(filepath,net,train_percent,val_percent):
-    device = 'cuda'
-    net.load_state_dict(torch.load(filepath, map_location=device))
-    net.to(device=device)
-    net.eval() # 评估模式
-    
-    try:
-        train = SatelliteDataset(pre_dir_img, pre_dir_mask,post_dir_img, post_dir_mask, 1, values =  [[.8,1.5], True, True,True], probabilities = [0,0,0,0])
-        validate = SatelliteDataset(pre_dir_val_img, pre_dir_val_mask,post_dir_val_img, post_dir_val_mask, 1, values =  [[1,1], False, False, False], probabilities = [0,0,0,0])
-        # train = SatelliteDataset(pre_dir_img, pre_dir_mask,post_dir_img, post_dir_mask, 1, values =  [[.8,1.5], True, True,True], probabilities = [0,0,0,0],increase = 0 ,mask_suffix = '.png',normalizemodel = 'vgg19')
-        # validate = SatelliteDataset(pre_dir_val_img, pre_dir_val_mask,post_dir_val_img, post_dir_val_mask, 1, values =  [[1,1], False, False, False], probabilities = [0,0,0,0],increase = 0,mask_suffix = '.png', normalizemodel = 'vgg19')
-    except (AssertionError, RuntimeError):
-        print('error')
-
-    loader_args = dict(batch_size=1, num_workers=1, pin_memory=True)        
-        
-    # 2. Split into train / validation partitions
-    n_train = int(len(train) * train_percent)
-    n_train_none = int(len(train) - n_train)
-    n_val = int(len(validate) * val_percent)
-    n_val_none = int(len(validate) - n_val)
-
-    train_set, train_val_none_set = random_split(train, [n_train, n_train_none], generator=torch.Generator().manual_seed(0))
-    
-    train_loader = DataLoader(train_set, shuffle=True, **loader_args)    
-
-    val_set, val_none_set = random_split(validate, [n_val, n_val_none], generator=torch.Generator().manual_seed(0))    
-
-    val_loader = DataLoader(val_set, shuffle=False, drop_last=True, **loader_args) 
-    resulttrain = torch.zeros(5,5).to(device)
-    resultval = torch.zeros(5,5).to(device)
-
-    num_val_batches = len(val_loader)
-    num_train_batches = len(train_loader)
-    confmat = ConfusionMatrix(task="multiclass", num_classes=5).to(device)
-
-    with tqdm(total=num_train_batches, desc='train', unit='img') as pbar:
-        for batch in train_loader:
-            preimage, postimage, true_masks = batch['preimage'], batch['postimage'], batch['postmask']
-            # preimage, postimage, true_masks = batch['preimage'], batch['image'], batch['mask']
-            preimage = preimage.to(device=device, dtype=torch.float32)
-            postimage = postimage.to(device=device, dtype=torch.float32)
-            true_masks = true_masks.to(device=device, dtype=torch.long)
-            mask_true = F.one_hot(true_masks, 5).permute(0,3, 1, 2).float()
-            with torch.amp.autocast('cuda', enabled = True):
-                # predict the mask
-                mask_pred = net(preimage,postimage)
-                # convert to one-hot format
-                pred = F.softmax(mask_pred, dim=1).int().argmax(-3)
-                true = F.one_hot(true_masks, 5).int().permute(0, 3, 1, 2).argmax(-3)
-                resulttrain += confmat(pred,true)
-            pbar.update(postimage.shape[0])
-    print(resulttrain)
-    with tqdm(total=num_val_batches, desc='validation', unit='img') as pbar:
-        for batch in val_loader:
-            preimage, postimage, true_masks = batch['preimage'], batch['postimage'], batch['postmask']
-            preimage = preimage.to(device=device, dtype=torch.float32)
-            postimage = postimage.to(device=device, dtype=torch.float32)
-            true_masks = true_masks.to(device=device, dtype=torch.long)
-            mask_true = F.one_hot(true_masks, 5).permute(0,3, 1, 2).float()
-            with torch.cuda.amp.autocast(enabled = True):
-                # predict the mask
-                mask_pred = net(preimage,postimage)
-                # convert to one-hot format
-                pred = F.softmax(mask_pred, dim=1).int().argmax(-3)
-                true = F.one_hot(true_masks, 5).int().permute(0, 3, 1, 2).argmax(-3)
-                resultval += confmat(pred,true)
-            pbar.update(postimage.shape[0])
-    print(resultval)
-    net.train()
-
-    # Fixes a potential division by zero error
-    if num_val_batches == 0:
-        return resulttrain,resultval
-    return resulttrain,resultval
-def EvaluateFolder(folderpath,net,train_percent,val_percent):
-    in_files = [folderpath + s for s in os.listdir(folderpath)]
-    try:
-        train = SatelliteDataset(pre_dir_img, pre_dir_mask,post_dir_img, post_dir_mask, 1, values =  [[.8,1.5], True, True,True], probabilities = [0,0,0,0])
-        # train = SatelliteDataset(pre_dir_img, pre_dir_mask,post_dir_img, post_dir_mask, 1, values =  [[.8,1.5], True, True,True], probabilities = [0,0,0,0],increase = 0 ,mask_suffix = '.png',normalizemodel = 'vgg19')
-        validate = SatelliteDataset(pre_dir_val_img, pre_dir_val_mask,post_dir_val_img, post_dir_val_mask, 1, values =  [[1,1], False, False, False], probabilities = [0,0,0,0]) 
-        # validate = SatelliteDataset(pre_dir_val_img, pre_dir_val_mask,post_dir_val_img, post_dir_val_mask, 1, values =  [[1,1], False, False, False], probabilities = [0,0,0,0],increase = 0,mask_suffix = '.png', normalizemodel = 'vgg19')
-    except (AssertionError, RuntimeError):
-        print('error')
-
-    loader_args = dict(batch_size=1, num_workers=1, pin_memory=True)        
-        
-    # 2. Split into train / validation partitions
-    n_train = int(len(train) * train_percent)
-    n_train_none = int(len(train) - n_train)
-    n_val = int(len(validate) * val_percent)
-    n_val_none = int(len(validate) - n_val)
-
-    train_set, train_val_none_set = random_split(train, [n_train, n_train_none], generator=torch.Generator().manual_seed(0))
-    
-    train_loader = DataLoader(train_set, shuffle=True, **loader_args)    
-
-    val_set, val_none_set = random_split(validate, [n_val, n_val_none], generator=torch.Generator().manual_seed(0))    
-
-    val_loader = DataLoader(val_set, shuffle=False, drop_last=True, **loader_args)
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
-    
-    loader_args = dict(batch_size=1, num_workers=1, pin_memory=True)        
-    
-    for i in in_files:
-        net.load_state_dict(torch.load(i, map_location=device))
-        net.to(device=device)
-        val_score, val_classes,val_loss = evaluate(net,dataloader = val_loader,device = device,ampbool = True,traintype = 'both')
-        train_score, train_classes,train_loss = evaluate(net,dataloader = train_loader,device = device,ampbool = True,traintype = 'both')
-        print('Train: ' + i)
-        print(train_score)
-        print(train_classes)
-        print(train_loss)
-        print('Validation: ' + i)
-        print(val_score)
-        print(val_classes)
-        print(val_loss)
 classes = 5
 bilinear = True
 loadstate = False
