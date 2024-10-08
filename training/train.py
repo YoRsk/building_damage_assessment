@@ -26,7 +26,7 @@ import json
 import os
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
-from training.utils.tensor_encoder import TensorEncoder
+from utils.tensor_encoder import TensorEncoder
 from clearml import Task
 from torchmetrics import JaccardIndex
 logger = logging.getLogger(__name__)
@@ -35,7 +35,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-img_home_path = "C:/Users/xiao/peng/xbd/Dataset"
+#img_home_path = "C:/Users/xiao/peng/xbd/Dataset"
+img_home_path = "C:/Users/xiao/peng/xbd/Dataset_test"
 # img_home_path = "C:/Users/liuyi/segment/ubdd/xbd/Dataset_test"
 post_dir_img = img_home_path + "/TierFull/Post/Image512/"
 post_dir_mask = img_home_path + "/TierFull/Post/Label512/"
@@ -406,7 +407,8 @@ loadstate = False
 # load = './checkpoints/Vgg19SiamConc/checkpoint_epoch12.pth'
 start_epoch = 1
 # start_epoch = 13
-epochs = 100
+# epochs = 100
+epochs = 10
 batch_size = 4
 batch_size = 4
 # batch_size = 1

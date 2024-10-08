@@ -14,9 +14,7 @@ class SiameseUNetWithResnet50Encoder(nn.Module):
 
     def __init__(self, n_classes=5):
         super().__init__()
-        # resnet = ResNet50WithCBAM(use_cbam=True, image_depth=3, num_classes=n_classes)
         resnet = models.resnet50(weights=ResNet50_Weights.DEFAULT)
-        
         # resnet = torchvision.models.resnet.resnet50(pretrained=True)
         #weights=ResNet50_Weights.IMAGENET1K_V1
         down_blocks = []
