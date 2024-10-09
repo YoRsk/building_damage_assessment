@@ -3,8 +3,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from utils.dice_score import multiclass_dice_coeff, dice_coeff, dice_loss
 import torch.nn as nn
-from torchmetrics import F1Score, JaccardIndex, ConfusionMatrix
-from torchmetrics import AUROC
+from torchmetrics import F1Score, JaccardIndex, ConfusionMatrix, AUROC
 
 def evaluate(net, dataloader, device, ampbool, traintype='post'):
     with torch.no_grad():
@@ -15,8 +14,8 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
         criterion = nn.CrossEntropyLoss()
         epoch_loss = 0
 
-        # 初始化指标
-        f1_score = F1Score(task='multiclass', num_classes=5, average='macro').to(device)
+        # 只初始化一个 F1Score 指标，用于计算每个类别的 F1 分数
+        f1_score_per_class = F1Score(task='multiclass', num_classes=5, average=None).to(device)
         iou_score = JaccardIndex(task="multiclass", num_classes=5).to(device)
         # normalize='true' 在真实标签做归一化
         confmat = ConfusionMatrix(task="multiclass", num_classes=5, normalize='true').to(device) 
@@ -61,12 +60,11 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
                                                             reduce_batch_first=False)
                             dice_score_class[4] += dice_coeff(mask_pred[:, 4, ...], mask_true[:, 4, ...],
                                                             reduce_batch_first=False)
-
-                    # 更新指标
-                    f1_score.update(mask_pred.argmax(dim=1), true_masks)
+                            
+                    f1_score_per_class.update(mask_pred.argmax(dim=1), true_masks)
                     iou_score.update(mask_pred.argmax(dim=1), true_masks)
                     confmat.update(mask_pred.argmax(dim=1).flatten(), true_masks.flatten())
-                    auroc.update(F.softmax(mask_pred, dim=1), true_masks)  # 添加这行
+                    auroc.update(F.softmax(mask_pred, dim=1), true_masks)
 
                     pbar.update(postimage.shape[0])
                     pbar.set_postfix(**{'loss (batch)': loss.item()})
@@ -94,8 +92,8 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
                         dice_score += multiclass_dice_coeff(mask_pred[:, 1:, ...], mask_true[:, 1:, ...],
                                                             reduce_batch_first=False)
 
-                    # 更新指标
-                    f1_score.update(mask_pred.argmax(dim=1), true_masks)
+                    # 在更新指标时，保持原来的逻辑
+                    f1_score_per_class.update(mask_pred.argmax(dim=1), true_masks)
                     iou_score.update(mask_pred.argmax(dim=1), true_masks)
                     confmat.update(mask_pred.argmax(dim=1).flatten(), true_masks.flatten())
 
@@ -110,9 +108,14 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
             return [dice_score, dice_score_class, epoch_loss, 0, 0, None]
 
         # 计算最终的指标值
-        f1 = f1_score.compute()
+        f1_per_class = f1_score_per_class.compute()
+        f1_macro = f1_per_class.mean()  # 计算宏平均 F1 分数
         iou = iou_score.compute()
         confusion_matrix = confmat.compute()
         auc_roc = auroc.compute()  # 添加这行
 
-        return [dice_score / num_val_batches, [i / num_val_batches for i in dice_score_class], epoch_loss, f1, iou, confusion_matrix, auc_roc]
+        # 移除未分类类别的结果
+        confusion_matrix = confusion_matrix[1:, 1:]
+
+        return [dice_score / num_val_batches, [i / num_val_batches for i in dice_score_class], 
+                epoch_loss, f1_macro, f1_per_class, iou, confusion_matrix, auc_roc]

@@ -87,11 +87,10 @@ floss = FocalLoss(mode = 'multiclass',
 # ########混淆矩阵 （不行就删除）
 # #类别名字
 class_names = {
-    0: "unclassified",
-    1: "no-damage",
-    2: "minor-damage",
-    3: "major-damage",
-    4: "destroyed"
+    0: "no-damage",
+    1: "minor-damage",
+    2: "major-damage",
+    3: "destroyed"
 }
 
 def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
@@ -99,14 +98,17 @@ def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
     if isinstance(confusion_matrix, torch.Tensor):
         confusion_matrix = confusion_matrix.cpu().numpy()
     
-    # 保存原始混淆矩阵为numpyshuzu
+    # 移除 "unclassified" 类别（假设它是第一行和第一列）
+    confusion_matrix = confusion_matrix[1:, 1:]
+    
+    # 保存原始混淆矩阵为numpy数组
     np.save(f"{save_dir}/{filename_prefix}_confusion_matrix.npy", confusion_matrix)
     
     # 创建热力图
     plt.figure(figsize=(10, 8))
     sns.heatmap(confusion_matrix, annot=True, fmt='.3f', cmap='Blues',
-                xticklabels=[class_names[i] for i in range(5)],
-                yticklabels=[class_names[i] for i in range(5)])
+                xticklabels=range(4),  # 使用0、1、2、3作为标签
+                yticklabels=range(4))  # 使用0、1、2、3作为标签
     plt.title('Confusion Matrix in Damage Level')
     plt.xlabel('Predicted')
     plt.ylabel('True')
@@ -299,7 +301,7 @@ def train_net(net,
         train_loss = epoch_loss / len(train_loader)
         
         # 使用现有的evaluate函数进行验证
-        val_score, val_class_scores, val_loss, val_f1, val_iou, val_confusion_matrix, val_auc_roc = evaluate(net, dataloader=val_loader, device=device, ampbool=ampbool, traintype=traintype)
+        val_score, val_class_scores, val_loss, val_f1_macro, val_f1_per_class, val_iou, val_confusion_matrix, val_auc_roc = evaluate(net, dataloader=val_loader, device=device, ampbool=ampbool, traintype=traintype)
         # 获取当前的学习率
         current_lr = optimizer.param_groups[0]['lr']
         # 更新学习率
@@ -315,7 +317,8 @@ def train_net(net,
             "train_precision": train_prec.item(),
             "train_recall": train_rec.item(),
             "train_f1_score": train_f1_score.item(),
-            "val_f1_score": val_f1.item(),
+            "val_f1_score_macro": val_f1_macro.item(),
+            "val_f1_score_per_class": [f1.item() for f1 in val_f1_per_class],
             "val_class_scores": [score.item() for score in val_class_scores],
             "train_iou": train_iou_score.item(),
             "val_iou": val_iou.item(),
@@ -333,7 +336,9 @@ def train_net(net,
         writer.add_scalar('Precision/train', train_prec, epoch)
         writer.add_scalar('Recall/train', train_rec, epoch)
         writer.add_scalar('F1 Score/train', train_f1_score, epoch)
-        writer.add_scalar('F1 Score/validation', val_f1, epoch)
+        writer.add_scalar('F1 Score/validation_macro', val_f1_macro, epoch)
+        for i, f1 in enumerate(val_f1_per_class):
+            writer.add_scalar(f'F1 Score/validation_class_{i}', f1, epoch)
         writer.add_scalar('IoU/train', train_iou_score, epoch)
         writer.add_scalar('IoU/validation', val_iou, epoch)
         writer.add_scalar('AUC-ROC/validation', val_auc_roc, epoch)
@@ -346,7 +351,8 @@ def train_net(net,
         print(f'Epoch {epoch}')
         print(f'Training - Accuracy: {train_acc:.4f}, Precision: {train_prec:.4f}, Recall: {train_rec:.4f}, F1 Score: {train_f1_score:.4f}, IoU: {train_iou_score:.4f}')
         print(f'Training Loss: {train_loss:.4f}')
-        print(f'Validation - Dice Score: {val_score:.4f}, F1 Score: {val_f1:.4f}, IoU: {val_iou:.4f}')
+        print(f'Validation - Dice Score: {val_score:.4f}, F1 Score (macro): {val_f1_macro:.4f}, IoU: {val_iou:.4f}')
+        print(f'Validation - F1 Score per class: {[f"{f1:.4f}" for f1 in val_f1_per_class]}')
         print(f'Validation - Class Dice Scores: {[f"{score:.4f}" for score in val_class_scores]}')
         print(f'Validation Loss: {val_loss:.4f}')
         print(f'Validation - AUC-ROC: {val_auc_roc:.4f}')
@@ -385,7 +391,9 @@ def train_net(net,
              task.get_logger().report_scalar("F1 Score", "train", value=train_f1_score, iteration=epoch)
              task.get_logger().report_scalar("Loss", "train", value=train_loss, iteration=epoch)
              task.get_logger().report_scalar("Dice Score", "validation", value=val_score, iteration=epoch)
-             task.get_logger().report_scalar("F1 Score", "validation", value=val_f1, iteration=epoch)
+             task.get_logger().report_scalar("F1 Score", "validation_macro", value=val_f1_macro, iteration=epoch)
+             for i, f1 in enumerate(val_f1_per_class):
+                 task.get_logger().report_scalar(f"F1 Score Class {i}", "validation", value=f1, iteration=epoch)
              task.get_logger().report_scalar("Loss", "validation", value=val_loss, iteration=epoch)
              task.get_logger().report_scalar("Learning Rate", "", value=current_lr, iteration=epoch)
              task.get_logger().report_scalar("IoU", "train", value=train_iou_score, iteration=epoch)

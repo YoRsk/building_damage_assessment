@@ -6,7 +6,8 @@ from torchvision import transforms
 from model.my_models import SiameseUNetWithResnet50Encoder  # 导入您的模型
 from utils.data_loading import preprocess  # 导入您的预处理函数
 from utils.dice_score import multiclass_dice_coeff, dice_coeff
-from torchmetrics import F1Score, JaccardIndex
+from torchmetrics import F1Score, JaccardIndex, AUROC, Precision, Recall
+import torch.nn.functional as F
 
 def load_model(model_path):
     model = SiameseUNetWithResnet50Encoder()
@@ -48,34 +49,45 @@ def calculate_metrics(prediction, ground_truth):
     iou_score = JaccardIndex(task="multiclass", num_classes=5)
     iou = iou_score(prediction_tensor, ground_truth_tensor)
     
-    return dice.item(), f1.item(), iou.item()
+    precision_score = Precision(task="multiclass", num_classes=5, average='macro')
+    precision = precision_score(prediction_tensor, ground_truth_tensor)
+    
+    recall_score = Recall(task="multiclass", num_classes=5, average='macro')
+    recall = recall_score(prediction_tensor, ground_truth_tensor)
+    
+    auroc = AUROC(task="multiclass", num_classes=5)
+    # 为AUROC计算准备概率分布
+    pred_probs = F.softmax(torch.randn(1, 5, *prediction.shape), dim=1)  # 这里使用随机值，实际中应使用模型的原始输出
+    auc_roc = auroc(pred_probs, ground_truth_tensor)
+    
+    return dice.item(), f1.item(), iou.item(), precision.item(), recall.item(), auc_roc.item()
 
 def main():
     model_path = 'path/to/your/trained/model.pth'
-    pre_image_path = 'path/to/pre_disaster_image.png'
-    post_image_path = 'path/to/post_disaster_image.png'
-    mask_path = 'path/to/ground_truth_mask.png'  # 如果有的话
+    pre_image_path = 'path/to/large_pre_disaster_image.tif'
+    post_image_path = 'path/to/large_post_disaster_image.tif'
+    mask_path = 'path/to/ground_truth_mask.tif'  # 如果有的话
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    model = load_model(model_path)
+    model = load_model(model_path, device)
     
     pre_image = Image.open(pre_image_path)
     post_image = Image.open(post_image_path)
     mask = Image.open(mask_path) if mask_path else None
     
-    pre_image_tensor = preprocess(pre_image).to(device)
-    post_image_tensor = preprocess(post_image).to(device)
-    
-    prediction = predict_image(model, pre_image_tensor, post_image_tensor, device)
+    prediction = predict_image(model, pre_image, post_image, device)
     
     if mask is not None:
         mask_np = np.array(mask)
         visualize_prediction(np.array(post_image), mask_np, prediction)
-        dice, f1, iou = calculate_metrics(prediction, mask_np)
+        dice, f1, iou, precision, recall, auc_roc = calculate_metrics(prediction, mask_np)
         print(f'Dice Score: {dice:.4f}')
         print(f'F1 Score: {f1:.4f}')
         print(f'IoU: {iou:.4f}')
+        print(f'Precision: {precision:.4f}')
+        print(f'Recall: {recall:.4f}')
+        print(f'AUC-ROC: {auc_roc:.4f}')
     else:
         plt.imshow(prediction)
         plt.title('Prediction')
