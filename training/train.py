@@ -31,11 +31,20 @@ from torch.utils.data import DataLoader, random_split
 from utils.tensor_encoder import TensorEncoder
 from clearml import Task
 from torchmetrics import JaccardIndex
-logger = logging.getLogger(__name__)
 
-# 设置 logger 的级别为 DEBUG
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+# 创建一个文件处理器
+file_handler = logging.FileHandler('process.log')
+file_handler.setLevel(logging.DEBUG)
+
+# 创建一个格式器
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+
+# 将处理器添加到 logger
+logger.addHandler(file_handler)
 #img_home_path = "C:/Users/xiao/peng/xbd/Dataset"
 img_home_path = "C:/Users/xiao/peng/xbd/Dataset_test"
 # img_home_path = "C:/Users/liuyi/segment/ubdd/xbd/Dataset_test"
@@ -62,7 +71,7 @@ pre_dir_test_mask = img_home_path + "/Test/Pre/Label512/"
 
 # 创建带有时间戳的 checkpoint 目录
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-dir_checkpoint = Path(f'checkpoints/v_1.2_lr_1e-4_{timestamp}/')
+dir_checkpoint = Path(f'checkpoints/v_1.3_lr_8.1e-4_{timestamp}/')
 # dir_checkpoint = Path('checkpoints/v_1.2_lr_5e-4_cbam/')
 # dir_checkpoint = Path('checkpoints/v_1.0_lr_10-6/')
 
@@ -329,34 +338,32 @@ def train_net(net,
         print(f'Validation Loss: {val_loss:.4f}')
         print(f'NaN Count: {nancount}')
         
+        # 保存checkpoint
         if save_checkpoint:
             Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
             checkpoint_path = str(dir_checkpoint / f'checkpoint_epoch_{epoch}.pth')
             torch.save(net.state_dict(), checkpoint_path)
             saved_checkpoints.append(checkpoint_path)
-            logging.info(f'Checkpoint {epoch} saved!')
+            logger.info(f'Checkpoint {epoch} saved!')
 
             # 保存混淆矩阵
             if val_confusion_matrix is not None:
                 save_confusion_matrix(val_confusion_matrix, dir_checkpoint, f"epoch_{epoch}_validation")
-                confusion_matrix_path = str(dir_checkpoint / f'confusion_matrix_epoch_{epoch}.png')
+                confusion_matrix_path = str(dir_checkpoint / f'epoch_{epoch}_validation_confusion_matrix.png')
                 saved_confusion_matrices.append(confusion_matrix_path)
 
-            # 每 5 个 epoch 删除旧的权重文件和混淆矩阵
+            # 每 5 个 epoch 删除旧的checkpoint和混淆矩阵
             if epoch % 5 == 0 and len(saved_checkpoints) > 5:
                 checkpoints_to_delete = saved_checkpoints[:-5]
                 confusion_matrices_to_delete = saved_confusion_matrices[:-5]
                 for old_checkpoint, old_confusion_matrix in zip(checkpoints_to_delete, confusion_matrices_to_delete):
                     os.remove(old_checkpoint)
                     os.remove(old_confusion_matrix)
-                    logging.info(f'Deleted old checkpoint: {old_checkpoint}')
-                    logging.info(f'Deleted old confusion matrix: {old_confusion_matrix}')
+                    logger.info(f'Deleted old checkpoint: {old_checkpoint}')
+                    logger.info(f'Deleted old confusion matrix: {old_confusion_matrix}')
                 saved_checkpoints = saved_checkpoints[-5:]
                 saved_confusion_matrices = saved_confusion_matrices[-5:]
-
-        #     if task:
-        #         task.upload_artifact(f"checkpoint_epoch_{epoch}", checkpoint_path)
-        #         # 记录指标到 ClearML
+        # 保存到 ClearML
         if task:
              task.get_logger().report_scalar("Accuracy", "train", value=train_acc, iteration=epoch)
              task.get_logger().report_scalar("Precision", "train", value=train_prec, iteration=epoch)
@@ -369,7 +376,7 @@ def train_net(net,
              task.get_logger().report_scalar("Learning Rate", "", value=current_lr, iteration=epoch)
              task.get_logger().report_scalar("IoU", "train", value=train_iou_score, iteration=epoch)
              task.get_logger().report_scalar("IoU", "validation", value=val_iou, iteration=epoch)
-        ###### 定期保存训练数据到文件
+        # 定期保存training_data到log文件
         if epoch % 5 == 0 or epoch == epochs - 1:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"training_log_{timestamp}.json"
@@ -407,7 +414,7 @@ def train_net(net,
     while len(saved_checkpoints) > 5:
         old_checkpoint = saved_checkpoints.pop(0)
         os.remove(old_checkpoint)
-        logging.info(f'Deleted old checkpoint: {old_checkpoint}')
+        logger.info(f'Deleted old checkpoint: {old_checkpoint}')
 
     return net
 
@@ -421,11 +428,12 @@ loadstate = False
 start_epoch = 1
 # start_epoch = 13
 # epochs = 100
-epochs = 10
-batch_size = 4
-batch_size = 4
+# epochs = 50
+epoch = 10
+batch_size = 3
+batch_size = 3
 # batch_size = 1
-lr = 1.38e-4
+lr = 8.125358e-4
 # lr = 1e-6
 scale = 1
 train = 1
@@ -502,7 +510,7 @@ if __name__ == '__main__':
     '''
     if loadstate:
         net.load_state_dict(torch.load(load, map_location=device))
-        logging.info(f'Model loaded from {load}')
+        logger.info(f'Model loaded from {load}')
 
     net.to(device=device)
 
