@@ -17,7 +17,8 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
         # 初始化指标
         f1_score = F1Score(task='multiclass', num_classes=5, average='macro').to(device)
         iou_score = JaccardIndex(task="multiclass", num_classes=5).to(device)
-        confmat = ConfusionMatrix(task="multiclass",num_classes=5).to(device)
+        # normalize='true' 在真实标签做归一化
+        confmat = ConfusionMatrix(task="multiclass", num_classes=5, normalize='true').to(device) 
 
         with tqdm(total=num_val_batches, desc='validation', unit='img') as pbar:
             if (traintype == 'both'):

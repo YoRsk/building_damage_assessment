@@ -16,16 +16,18 @@ from pathlib import Path
 
 
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+
 import torchmetrics
 import logging
 from pathlib import Path
 import torch.nn.functional as F
-
+import matplotlib.pyplot as plt
+import seaborn as sns
 import json
 import os
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data import DataLoader, random_split
 from utils.tensor_encoder import TensorEncoder
 from clearml import Task
 from torchmetrics import JaccardIndex
@@ -33,7 +35,6 @@ logger = logging.getLogger(__name__)
 
 # 设置 logger 的级别为 DEBUG
 logger.setLevel(logging.DEBUG)
-
 
 #img_home_path = "C:/Users/xiao/peng/xbd/Dataset"
 img_home_path = "C:/Users/xiao/peng/xbd/Dataset_test"
@@ -58,7 +59,10 @@ pre_dir_test_mask = img_home_path + "/Test/Pre/Label512/"
 # post_dir_val_mask = Path('.\\Dataset\\Validation\\Post\\Label512\\')
 # pre_dir_val_img = Path('.\\Dataset\\Validation\\Pre\\Image512\\')
 # pre_dir_val_mask = Path('.\\Dataset\\Validation\\Pre\\Label512\\')
-dir_checkpoint = Path('checkpoints/v_1.2_lr_1e-4/')
+
+# 创建带有时间戳的 checkpoint 目录
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+dir_checkpoint = Path(f'checkpoints/v_1.2_lr_1e-4_{timestamp}/')
 # dir_checkpoint = Path('checkpoints/v_1.2_lr_5e-4_cbam/')
 # dir_checkpoint = Path('checkpoints/v_1.0_lr_10-6/')
 
@@ -72,21 +76,18 @@ floss = FocalLoss(mode = 'multiclass',
                 normalized = False,
                 reduced_threshold = None)
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-
 def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
     # 确保 confusion_matrix 是 numpy 数组
     if isinstance(confusion_matrix, torch.Tensor):
         confusion_matrix = confusion_matrix.cpu().numpy()
     
-    # 保存为 numpy 数组
+    # 保存原始混淆矩阵为numpyshuzu
     np.save(f"{save_dir}/{filename_prefix}_confusion_matrix.npy", confusion_matrix)
     
     # 创建热力图
     plt.figure(figsize=(10, 8))
-    sns.heatmap(confusion_matrix, annot=True, fmt='d', cmap='Blues')
-    plt.title('Confusion Matrix')
+    sns.heatmap(confusion_matrix, annot=True, fmt='.3f', cmap='Blues')
+    plt.title(' Confusion Matrix in Damage Level')
     plt.xlabel('Predicted')
     plt.ylabel('True')
     
@@ -193,6 +194,8 @@ def train_net(net,
 
     # 6. Begin training
     saved_checkpoints = []
+    saved_confusion_matrices = []
+    
     for epoch in range(start_epoch, start_epoch + epochs):
         net.train()
         epoch_loss = 0
@@ -333,13 +336,23 @@ def train_net(net,
             saved_checkpoints.append(checkpoint_path)
             logging.info(f'Checkpoint {epoch} saved!')
 
-            # 每 5 个 epoch 删除旧的权重文件
+            # 保存混淆矩阵
+            if val_confusion_matrix is not None:
+                save_confusion_matrix(val_confusion_matrix, dir_checkpoint, f"epoch_{epoch}_validation")
+                confusion_matrix_path = str(dir_checkpoint / f'confusion_matrix_epoch_{epoch}.png')
+                saved_confusion_matrices.append(confusion_matrix_path)
+
+            # 每 5 个 epoch 删除旧的权重文件和混淆矩阵
             if epoch % 5 == 0 and len(saved_checkpoints) > 5:
                 checkpoints_to_delete = saved_checkpoints[:-5]
-                for old_checkpoint in checkpoints_to_delete:
+                confusion_matrices_to_delete = saved_confusion_matrices[:-5]
+                for old_checkpoint, old_confusion_matrix in zip(checkpoints_to_delete, confusion_matrices_to_delete):
                     os.remove(old_checkpoint)
+                    os.remove(old_confusion_matrix)
                     logging.info(f'Deleted old checkpoint: {old_checkpoint}')
+                    logging.info(f'Deleted old confusion matrix: {old_confusion_matrix}')
                 saved_checkpoints = saved_checkpoints[-5:]
+                saved_confusion_matrices = saved_confusion_matrices[-5:]
 
         #     if task:
         #         task.upload_artifact(f"checkpoint_epoch_{epoch}", checkpoint_path)
@@ -366,9 +379,9 @@ def train_net(net,
             except TypeError as e:
                 print(f"捕获到异常：{e}")
 
-        # 保存混淆矩阵
-        if val_confusion_matrix is not None:
-            save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
+        # # 保存混淆矩阵
+        # if val_confusion_matrix is not None:
+        #     save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
 
     # Final evaluation on test set
     test_score, test_class_scores, test_loss, test_f1, test_iou, test_confusion_matrix = evaluate(net, test_loader, device, ampbool, traintype)
