@@ -84,6 +84,15 @@ floss = FocalLoss(mode = 'multiclass',
                 reduction = "mean",
                 normalized = False,
                 reduced_threshold = None)
+# ########混淆矩阵 （不行就删除）
+# #类别名字
+class_names = {
+    0: "unclassified",
+    1: "no-damage",
+    2: "minor-damage",
+    3: "major-damage",
+    4: "destroyed"
+}
 
 def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
     # 确保 confusion_matrix 是 numpy 数组
@@ -95,15 +104,17 @@ def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
     
     # 创建热力图
     plt.figure(figsize=(10, 8))
-    sns.heatmap(confusion_matrix, annot=True, fmt='.3f', cmap='Blues')
-    plt.title(' Confusion Matrix in Damage Level')
+    sns.heatmap(confusion_matrix, annot=True, fmt='.3f', cmap='Blues',
+                xticklabels=[class_names[i] for i in range(5)],
+                yticklabels=[class_names[i] for i in range(5)])
+    plt.title('Confusion Matrix in Damage Level')
     plt.xlabel('Predicted')
     plt.ylabel('True')
     
     # 保存图片
     plt.savefig(f"{save_dir}/{filename_prefix}_confusion_matrix.png")
     plt.close()
-
+###############
 def train_net(net,
               device,
               start_epoch: int = 1,
@@ -288,7 +299,7 @@ def train_net(net,
         train_loss = epoch_loss / len(train_loader)
         
         # 使用现有的evaluate函数进行验证
-        val_score, val_class_scores, val_loss, val_f1, val_iou, val_confusion_matrix = evaluate(net, dataloader=val_loader, device=device, ampbool=ampbool, traintype=traintype)
+        val_score, val_class_scores, val_loss, val_f1, val_iou, val_confusion_matrix, val_auc_roc = evaluate(net, dataloader=val_loader, device=device, ampbool=ampbool, traintype=traintype)
         # 获取当前的学习率
         current_lr = optimizer.param_groups[0]['lr']
         # 更新学习率
@@ -308,7 +319,8 @@ def train_net(net,
             "val_class_scores": [score.item() for score in val_class_scores],
             "train_iou": train_iou_score.item(),
             "val_iou": val_iou.item(),
-            "learning_rate": current_lr
+            "learning_rate": current_lr,
+            "val_auc_roc": val_auc_roc.item(),
         }
         training_data["training_history"].append(epoch_data)
 
@@ -324,6 +336,7 @@ def train_net(net,
         writer.add_scalar('F1 Score/validation', val_f1, epoch)
         writer.add_scalar('IoU/train', train_iou_score, epoch)
         writer.add_scalar('IoU/validation', val_iou, epoch)
+        writer.add_scalar('AUC-ROC/validation', val_auc_roc, epoch)
         for i, class_score in enumerate(val_class_scores):
             writer.add_scalar(f'Dice Score/class_{i}', class_score, epoch)
         ############
@@ -336,6 +349,7 @@ def train_net(net,
         print(f'Validation - Dice Score: {val_score:.4f}, F1 Score: {val_f1:.4f}, IoU: {val_iou:.4f}')
         print(f'Validation - Class Dice Scores: {[f"{score:.4f}" for score in val_class_scores]}')
         print(f'Validation Loss: {val_loss:.4f}')
+        print(f'Validation - AUC-ROC: {val_auc_roc:.4f}')
         print(f'NaN Count: {nancount}')
         
         # 保存checkpoint
@@ -376,6 +390,7 @@ def train_net(net,
              task.get_logger().report_scalar("Learning Rate", "", value=current_lr, iteration=epoch)
              task.get_logger().report_scalar("IoU", "train", value=train_iou_score, iteration=epoch)
              task.get_logger().report_scalar("IoU", "validation", value=val_iou, iteration=epoch)
+             task.get_logger().report_scalar("AUC-ROC", "validation", value=val_auc_roc, iteration=epoch)
         # 定期保存training_data到log文件
         if epoch % 5 == 0 or epoch == epochs - 1:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -391,11 +406,12 @@ def train_net(net,
         #     save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
 
     # Final evaluation on test set
-    test_score, test_class_scores, test_loss, test_f1, test_iou, test_confusion_matrix = evaluate(net, test_loader, device, ampbool, traintype)
+    test_score, test_class_scores, test_loss, test_f1, test_iou, test_confusion_matrix, test_auc_roc = evaluate(net, test_loader, device, ampbool, traintype)
     print('Final Test Results:')
     print(f'Test - Dice Score: {test_score:.4f}, F1 Score: {test_f1:.4f}, IoU: {test_iou:.4f}')
     print(f'Test - Class Dice Scores: {[f"{score:.4f}" for score in test_class_scores]}')
     print(f'Test Loss: {test_loss:.4f}')
+    print(f'Test - AUC-ROC: {test_auc_roc:.4f}')
     ########
     # 保存最终结果
     final_filename = f"final_training_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"

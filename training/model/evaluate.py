@@ -4,6 +4,7 @@ from tqdm import tqdm
 from utils.dice_score import multiclass_dice_coeff, dice_coeff, dice_loss
 import torch.nn as nn
 from torchmetrics import F1Score, JaccardIndex, ConfusionMatrix
+from torchmetrics import AUROC
 
 def evaluate(net, dataloader, device, ampbool, traintype='post'):
     with torch.no_grad():
@@ -19,7 +20,7 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
         iou_score = JaccardIndex(task="multiclass", num_classes=5).to(device)
         # normalize='true' 在真实标签做归一化
         confmat = ConfusionMatrix(task="multiclass", num_classes=5, normalize='true').to(device) 
-
+        auroc = AUROC(task="multiclass", num_classes=5).to(device) 
         with tqdm(total=num_val_batches, desc='validation', unit='img') as pbar:
             if (traintype == 'both'):
                 loss = 0
@@ -65,6 +66,7 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
                     f1_score.update(mask_pred.argmax(dim=1), true_masks)
                     iou_score.update(mask_pred.argmax(dim=1), true_masks)
                     confmat.update(mask_pred.argmax(dim=1).flatten(), true_masks.flatten())
+                    auroc.update(F.softmax(mask_pred, dim=1), true_masks)  # 添加这行
 
                     pbar.update(postimage.shape[0])
                     pbar.set_postfix(**{'loss (batch)': loss.item()})
@@ -111,5 +113,6 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
         f1 = f1_score.compute()
         iou = iou_score.compute()
         confusion_matrix = confmat.compute()
+        auc_roc = auroc.compute()  # 添加这行
 
-        return [dice_score / num_val_batches, [i / num_val_batches for i in dice_score_class], epoch_loss, f1, iou, confusion_matrix]
+        return [dice_score / num_val_batches, [i / num_val_batches for i in dice_score_class], epoch_loss, f1, iou, confusion_matrix, auc_roc]
