@@ -8,6 +8,7 @@ from utils.data_loading import preprocess  # 导入您的预处理函数
 from utils.dice_score import multiclass_dice_coeff, dice_coeff
 from torchmetrics import F1Score, JaccardIndex, AUROC, Precision, Recall
 import torch.nn.functional as F
+import matplotlib.colors as mcolors
 
 def load_model(model_path):
     model = SiameseUNetWithResnet50Encoder()
@@ -24,13 +25,35 @@ def predict_image(model, pre_image, post_image, device):
     return output.argmax(dim=1).squeeze().cpu().numpy()
 
 def visualize_prediction(image, mask, prediction):
+    # 定义颜色映射
+    colors = ['black', 'blue', 'green', 'yellow', 'red']
+    n_classes = 5
+    cmap = mcolors.ListedColormap(colors[:n_classes])
+    
+    # 创建规范化对象
+    bounds = np.arange(n_classes + 1)
+    norm = mcolors.BoundaryNorm(bounds, cmap.N)
+
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+    
     ax1.imshow(image)
     ax1.set_title('Original Image')
-    ax2.imshow(mask)
+    ax1.axis('off')
+    
+    ax2.imshow(mask, cmap=cmap, norm=norm)
     ax2.set_title('Ground Truth')
-    ax3.imshow(prediction)
+    ax2.axis('off')
+    
+    ax3.imshow(prediction, cmap=cmap, norm=norm)
     ax3.set_title('Prediction')
+    ax3.axis('off')
+    
+    # 添加颜色条
+    cbar = fig.colorbar(ax3.imshow(prediction, cmap=cmap, norm=norm), ax=[ax2, ax3], orientation='horizontal', aspect=30, pad=0.08)
+    cbar.set_ticks(bounds[:-1] + 0.5)
+    cbar.set_ticklabels(['Unclassified', 'No Damage', 'Minor Damage', 'Major Damage', 'Destroyed'])
+    
+    plt.tight_layout()
     plt.show()
 
 def calculate_metrics(prediction, ground_truth):
@@ -89,9 +112,7 @@ def main():
         print(f'Recall: {recall:.4f}')
         print(f'AUC-ROC: {auc_roc:.4f}')
     else:
-        plt.imshow(prediction)
-        plt.title('Prediction')
-        plt.show()
+        visualize_prediction(np.array(post_image), None, prediction)
 
 if __name__ == '__main__':
     main()
