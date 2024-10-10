@@ -22,7 +22,10 @@ def predict_image(model, pre_image, post_image, device):
     post_image = post_image.unsqueeze(0).to(device)
     with torch.no_grad():
         output = model(pre_image, post_image)
+    #.squeeze(): 由于输入只有一张图片，batch_size 为 1，这步操作去除了 batch 维度。结果形状变为 (height, width)。
+    # argmax: get f(x)最大值
     return output.argmax(dim=1).squeeze().cpu().numpy()
+
 
 def visualize_prediction(image, mask, prediction):
     # 定义颜色映射

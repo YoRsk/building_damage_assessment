@@ -17,6 +17,7 @@ training/tensorboard_logs
 training/training_logs
 training/curve.ipynb
 training/.ipynb_checkpoints/
+training/process.log
 onnx_export.py
 SiameseUNetWithResnet50Encoder.onnx
 

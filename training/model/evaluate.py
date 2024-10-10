@@ -3,7 +3,8 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from utils.dice_score import multiclass_dice_coeff, dice_coeff, dice_loss
 import torch.nn as nn
-from torchmetrics import F1Score, JaccardIndex, ConfusionMatrix, AUROC
+from torchmetrics import F1Score, JaccardIndex, ConfusionMatrix
+from torchmetrics import AUROC
 
 def evaluate(net, dataloader, device, ampbool, traintype='post'):
     with torch.no_grad():
