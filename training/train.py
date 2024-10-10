@@ -70,8 +70,8 @@ pre_dir_test_mask = img_home_path + "/Test/Pre/Label512/"
 # pre_dir_val_mask = Path('.\\Dataset\\Validation\\Pre\\Label512\\')
 
 # 创建带有时间戳的 checkpoint 目录
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-dir_checkpoint = Path(f'checkpoints/v_1.3_lr_8.1e-4_{timestamp}/')
+# timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+# dir_checkpoint = Path(f'checkpoints/v_1.3_lr_8.1e-4_{timestamp}/')
 # dir_checkpoint = Path('checkpoints/v_1.2_lr_5e-4_cbam/')
 # dir_checkpoint = Path('checkpoints/v_1.0_lr_10-6/')
 
@@ -135,15 +135,22 @@ def train_net(net,
               traintype: str = 'both',
               gradient_clipping: float = 1.0):
 
-    # 0.tensorboard
-    # 创建保存日志的目录
-    save_dir = "training_logs"
-    os.makedirs(save_dir, exist_ok=True)
+    # 创建带有版本号、学习率和时间戳的目录名
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dir_name = f'v_1.3_lr_{learning_rate:.1e}_{timestamp}'
+    
+    # 创建checkpoints目录
+    dir_checkpoint = Path(f'checkpoints/{dir_name}/')
+    dir_checkpoint.mkdir(parents=True, exist_ok=True)
+    
+    # 创建training_logs目录
+    save_dir = Path(f'training_logs/{dir_name}/')
+    save_dir.mkdir(parents=True, exist_ok=True)
 
-
-    # 创建 TensorBoard 写入器
-    log_dir = "tensorboard_logs"
-    writer = SummaryWriter(log_dir=log_dir)
+    # 创建 TensorBoard 日志目录
+    log_dir = Path(f'tensorboard_logs/{dir_name}/')
+    log_dir.mkdir(parents=True, exist_ok=True)
+    writer = SummaryWriter(log_dir=str(log_dir))
 
 
     # 创建一个字典来存储训练参数和结果
@@ -370,24 +377,25 @@ def train_net(net,
             logger.info(f'Checkpoint {epoch} saved!')
             # 删除旧的检查点
             if len(saved_checkpoints) > 10:
-                old_checkpoint = saved_checkpoints.pop(0)
-                os.remove(old_checkpoint)
-                logger.info(f'Deleted old checkpoint: {old_checkpoint}')
+                old_checkpoint = Path(saved_checkpoints.pop(0))
+                if old_checkpoint.exists():
+                    old_checkpoint.unlink()
+                    logger.info(f'Deleted old checkpoint: {old_checkpoint}')
             
         # 保存混淆矩阵
         if val_confusion_matrix is not None:
-            cm_path = os.path.join(save_dir, f"epoch_{epoch}_validation_confusion_matrix")
-            save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
-            saved_confusion_matrices.append(cm_path)
+            cm_path = save_dir / f"epoch_{epoch}_validation_confusion_matrix"
+            save_confusion_matrix(val_confusion_matrix, str(save_dir), f"epoch_{epoch}_validation")
+            saved_confusion_matrices.append(str(cm_path))
             logger.info(f'Confusion Matrix {epoch} saved!')
             # 删除旧的混淆矩阵
             if len(saved_confusion_matrices) > 10:
-                old_cm = saved_confusion_matrices.pop(0)
-                if os.path.exists(f"{old_cm}.png"):
-                    os.remove(f"{old_cm}.png")
-                if os.path.exists(f"{old_cm}.npy"):
-                    os.remove(f"{old_cm}.npy")
-                logger.info(f'Deleted old confusion matrix: {old_cm}.png and {old_cm}.npy')
+                old_cm = Path(saved_confusion_matrices.pop(0))
+                if (old_cm.with_suffix('.png')).exists():
+                    (old_cm.with_suffix('.png')).unlink()
+                if (old_cm.with_suffix('.npy')).exists():
+                    (old_cm.with_suffix('.npy')).unlink()
+                logger.info(f'Deleted old confusion matrix: {old_cm}')
         else:
             logger.info("val_confusion_matrix is None")
         # 保存到 ClearML
@@ -408,10 +416,9 @@ def train_net(net,
              task.get_logger().report_scalar("AUC-ROC", "validation", value=val_auc_roc, iteration=epoch)
         # 定期保存training_data到log文件
         if epoch % 5 == 0 or epoch == epochs - 1:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"training_log_{timestamp}.json"
+            filename = f"training_log_epoch_{epoch}.json"
             try: 
-                with open(os.path.join(save_dir, filename), 'w') as f:
+                with open(save_dir / filename, 'w') as f:
                     json.dump(training_data, f, indent=4, cls=TensorEncoder)
             except TypeError as e:
                 print(f"捕获到异常：{e}")
@@ -430,8 +437,8 @@ def train_net(net,
     print(f'Test - AUC-ROC: {test_auc_roc:.4f}')
     ########
     # 保存最终结果
-    final_filename = f"final_training_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(os.path.join(save_dir, final_filename), 'w') as f:
+    final_filename = f"final_training_log.json"
+    with open(save_dir / final_filename, 'w') as f:
         json.dump(training_data, f, indent=4, cls=TensorEncoder)
 
     # 关闭 TensorBoard 写入器
@@ -440,20 +447,21 @@ def train_net(net,
 
     # 保存测试集的混淆矩阵
     if test_confusion_matrix is not None:
-        save_confusion_matrix(test_confusion_matrix, save_dir, "final_test")
+        save_confusion_matrix(test_confusion_matrix, str(save_dir), "final_test")
 
     # 训练循环结束后
     while len(saved_checkpoints) > 10:
-        old_checkpoint = saved_checkpoints.pop(0)
-        os.remove(old_checkpoint)
-        logger.info(f'Deleted old checkpoint: {old_checkpoint}')
+        old_checkpoint = Path(saved_checkpoints.pop(0))
+        if old_checkpoint.exists():
+            old_checkpoint.unlink()
+            logger.info(f'Deleted old checkpoint: {old_checkpoint}')
 
     while len(saved_confusion_matrices) > 10:
-        old_cm = saved_confusion_matrices.pop(0)
-        if os.path.exists(f"{old_cm}.png"):
-            os.remove(f"{old_cm}.png")
-        if os.path.exists(f"{old_cm}.npy"):
-            os.remove(f"{old_cm}.npy")
+        old_cm = Path(saved_confusion_matrices.pop(0))
+        if (old_cm.with_suffix('.png')).exists():
+            (old_cm.with_suffix('.png')).unlink()
+        if (old_cm.with_suffix('.npy')).exists():
+            (old_cm.with_suffix('.npy')).unlink()
         logger.info(f'Deleted old confusion matrix: {old_cm}')
 
     return net
