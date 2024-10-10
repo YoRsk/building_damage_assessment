@@ -45,8 +45,8 @@ file_handler.setFormatter(formatter)
 
 # 将处理器添加到 logger
 logger.addHandler(file_handler)
-#img_home_path = "C:/Users/xiao/peng/xbd/Dataset"
-img_home_path = "C:/Users/xiao/peng/xbd/Dataset_test"
+img_home_path = "C:/Users/xiao/peng/xbd/Dataset"
+# img_home_path = "C:/Users/xiao/peng/xbd/Dataset_test"
 # img_home_path = "C:/Users/liuyi/segment/ubdd/xbd/Dataset_test"
 post_dir_img = img_home_path + "/TierFull/Post/Image512/"
 post_dir_mask = img_home_path + "/TierFull/Post/Label512/"
@@ -86,12 +86,12 @@ floss = FocalLoss(mode = 'multiclass',
                 reduced_threshold = None)
 # ########混淆矩阵 （不行就删除）
 # #类别名字
-class_names = {
-    0: "no-damage",
-    1: "minor-damage",
-    2: "major-damage",
-    3: "destroyed"
-}
+# class_names = {
+#     0: "no-damage",
+#     1: "minor-damage",
+#     2: "major-damage",
+#     3: "destroyed"
+# }
 
 def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
     # 确保 confusion_matrix 是 numpy 数组
@@ -110,8 +110,8 @@ def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
     # 创建热力图
     plt.figure(figsize=(10, 8))
     sns.heatmap(confusion_matrix, annot=True, fmt='.3f', cmap='Blues',
-                xticklabels=range(4),  # 使用0、1、2、3作为标签
-                yticklabels=range(4))  # 使用0、1、2、3作为标签
+                xticklabels=range(1, 5),  # 使用1、2、3, 4作为标签
+                yticklabels=range(1, 5))  # 使用1、2、3, 4作为标签
     plt.title('Confusion Matrix in Damage Level')
     plt.xlabel('Predicted')
     plt.ylabel('True')
@@ -200,6 +200,17 @@ def train_net(net,
     test_set, test_none_set = random_split(test_set, [n_test, n_test_none], generator=torch.Generator().manual_seed(0))
     test_loader = DataLoader(test_set, shuffle=False, drop_last=True, **loader_args)
 
+########################################################
+   # 在创建数据集和数据加载器之后，添加以下打印语句
+
+    # print(f"Total training samples: (train){len(train)}")
+    # print(f"Total validation samples: (validate){len(validate)}")
+    # print(f"n_train: {n_train}")
+    # print(f"n_val: {n_val}")
+    # print(f"Number of batches in train_loader: {len(train_loader)}")
+    # print(f"Number of batches in val_loader: {len(val_loader)}")
+#########################################################
+
     # 4. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
     #optimizer = optim.RMSprop(net.parameters(), lr=learning_rate, weight_decay=1e-6, momentum=0.9, foreach=True)
     optimizer = optim.Adam(net.parameters(), lr=learning_rate)
@@ -250,8 +261,9 @@ def train_net(net,
                     masks_pred = None
                     if traintype == 'both':
                         masks_pred = net(preimage, postimage)
-                        loss = criterion(masks_pred, post_masks)
-                        loss += dice_loss(
+                        # 暂时不用交叉熵
+                        # loss = criterion(masks_pred, post_masks)
+                        loss = dice_loss(
                             F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
                             F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
                             multiclass=True
@@ -314,7 +326,7 @@ def train_net(net,
         train_loss = epoch_loss / len(train_loader)
         
         # 使用现有的evaluate函数进行验证
-        val_score, val_class_scores, val_loss, val_f1_macro, val_f1_per_class, val_iou, val_confusion_matrix, val_auc_roc = evaluate(net, dataloader=val_loader, device=device, ampbool=ampbool, traintype=traintype)
+        val_score, val_class_scores, val_loss, val_f1_macro, val_f1_per_class, val_iou, val_confusion_matrix = evaluate(net, dataloader=val_loader, device=device, ampbool=ampbool, traintype=traintype)
         # 获取当前的学习率
         current_lr = optimizer.param_groups[0]['lr']
         # 更新学习率
@@ -336,7 +348,7 @@ def train_net(net,
             "train_iou": train_iou_score.item(),
             "val_iou": val_iou.item(),
             "learning_rate": current_lr,
-            "val_auc_roc": val_auc_roc.item(),
+            # "val_auc_roc": val_auc_roc.item(),
         }
         training_data["training_history"].append(epoch_data)
 
@@ -354,7 +366,7 @@ def train_net(net,
             writer.add_scalar(f'F1 Score/validation_class_{i}', f1, epoch)
         writer.add_scalar('IoU/train', train_iou_score, epoch)
         writer.add_scalar('IoU/validation', val_iou, epoch)
-        writer.add_scalar('AUC-ROC/validation', val_auc_roc, epoch)
+        # writer.add_scalar('AUC-ROC/validation', val_auc_roc, epoch)
         for i, class_score in enumerate(val_class_scores):
             writer.add_scalar(f'Dice Score/class_{i}', class_score, epoch)
         ############
@@ -368,7 +380,7 @@ def train_net(net,
         print(f'Validation - F1 Score per class: {[f"{f1:.4f}" for f1 in val_f1_per_class]}')
         print(f'Validation - Class Dice Scores: {[f"{score:.4f}" for score in val_class_scores]}')
         print(f'Validation Loss: {val_loss:.4f}')
-        print(f'Validation - AUC-ROC: {val_auc_roc:.4f}')
+        # print(f'Validation - AUC-ROC: {val_auc_roc:.4f}')
         print(f'NaN Count: {nancount}')
         
         # 保存checkpoint
@@ -416,7 +428,7 @@ def train_net(net,
              task.get_logger().report_scalar("Learning Rate", "", value=current_lr, iteration=epoch)
              task.get_logger().report_scalar("IoU", "train", value=train_iou_score, iteration=epoch)
              task.get_logger().report_scalar("IoU", "validation", value=val_iou, iteration=epoch)
-             task.get_logger().report_scalar("AUC-ROC", "validation", value=val_auc_roc, iteration=epoch)
+            #  task.get_logger().report_scalar("AUC-ROC", "validation", value=val_auc_roc, iteration=epoch)
         # 定期保存training_data到log文件
         if epoch % 5 == 0 or epoch == epochs - 1:
             filename = f"training_log_epoch_{epoch}.json"
@@ -491,12 +503,13 @@ loadstate = False
 start_epoch = 1
 # start_epoch = 13
 # epochs = 100
-# epochs = 50
-#epoch = 50
-epochs = 10
-batch_size = 2
+epochs = 50
+# epochs = 11
+batch_size = 4
 # batch_size = 1
-lr = 8.125358e-4
+lr = 2.69e-4
+# lr = 8.125358e-4
+#lr = 1.38e-4
 # lr = 1e-6
 scale = 1
 train = 1

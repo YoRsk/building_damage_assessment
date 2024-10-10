@@ -21,3 +21,4 @@ training/process.log
 onnx_export.py
 SiameseUNetWithResnet50Encoder.onnx
 
+process.log
