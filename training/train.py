@@ -361,28 +361,28 @@ def train_net(net,
         # 保存checkpoint
         if save_checkpoint:
             Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
-            checkpoint_path = str(dir_checkpoint / f'checkpoint_epoch_{epoch}.pth')
-            torch.save(net.state_dict(), checkpoint_path)
-            saved_checkpoints.append(checkpoint_path)
+            checkpoint_path = dir_checkpoint / f'checkpoint_epoch{epoch}.pth'
+            torch.save(net.state_dict(), str(checkpoint_path))
+            saved_checkpoints.append(str(checkpoint_path))
             logger.info(f'Checkpoint {epoch} saved!')
-
+            # 删除旧的检查点
+            if len(saved_checkpoints) > 10:
+                old_checkpoint = saved_checkpoints.pop(0)
+                os.remove(old_checkpoint)
+                logger.info(f'Deleted old checkpoint: {old_checkpoint}')
+            
             # 保存混淆矩阵
             if val_confusion_matrix is not None:
-                save_confusion_matrix(val_confusion_matrix, dir_checkpoint, f"epoch_{epoch}_validation")
-                confusion_matrix_path = str(dir_checkpoint / f'epoch_{epoch}_validation_confusion_matrix.png')
-                saved_confusion_matrices.append(confusion_matrix_path)
-
-            # 每 5 个 epoch 删除旧的checkpoint和混淆矩阵
-            if epoch % 5 == 0 and len(saved_checkpoints) > 5:
-                checkpoints_to_delete = saved_checkpoints[:-5]
-                confusion_matrices_to_delete = saved_confusion_matrices[:-5]
-                for old_checkpoint, old_confusion_matrix in zip(checkpoints_to_delete, confusion_matrices_to_delete):
-                    os.remove(old_checkpoint)
-                    os.remove(old_confusion_matrix)
-                    logger.info(f'Deleted old checkpoint: {old_checkpoint}')
-                    logger.info(f'Deleted old confusion matrix: {old_confusion_matrix}')
-                saved_checkpoints = saved_checkpoints[-5:]
-                saved_confusion_matrices = saved_confusion_matrices[-5:]
+                cm_path = f"{save_dir}/epoch_{epoch}_validation_confusion_matrix"
+                save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
+                saved_confusion_matrices.append(cm_path)
+                
+                # 删除旧的混淆矩阵
+                if len(saved_confusion_matrices) > 10:
+                    old_cm = saved_confusion_matrices.pop(0)
+                    os.remove(f"{old_cm}.png")
+                    os.remove(f"{old_cm}.npy")
+                    logger.info(f'Deleted old confusion matrix: {old_cm}.png and {old_cm}.npy')
         # 保存到 ClearML
         if task:
              task.get_logger().report_scalar("Accuracy", "train", value=train_acc, iteration=epoch)
@@ -414,10 +414,11 @@ def train_net(net,
         #     save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
 
     # Final evaluation on test set
-    test_score, test_class_scores, test_loss, test_f1, test_iou, test_confusion_matrix, test_auc_roc = evaluate(net, test_loader, device, ampbool, traintype)
+    test_score, test_class_scores, test_loss, test_f1_macro, test_f1_per_class, test_iou, test_confusion_matrix, test_auc_roc = evaluate(net, test_loader, device, ampbool, traintype)
     print('Final Test Results:')
-    print(f'Test - Dice Score: {test_score:.4f}, F1 Score: {test_f1:.4f}, IoU: {test_iou:.4f}')
+    print(f'Test - Dice Score: {test_score:.4f}, F1 Score (macro): {test_f1_macro:.4f}, IoU: {test_iou:.4f}')
     print(f'Test - Class Dice Scores: {[f"{score:.4f}" for score in test_class_scores]}')
+    print(f'Test - F1 Score per class: {[f"{f1:.4f}" for f1 in test_f1_per_class]}')
     print(f'Test Loss: {test_loss:.4f}')
     print(f'Test - AUC-ROC: {test_auc_roc:.4f}')
     ########
@@ -435,10 +436,16 @@ def train_net(net,
         save_confusion_matrix(test_confusion_matrix, save_dir, "final_test")
 
     # 训练循环结束后
-    while len(saved_checkpoints) > 5:
+    while len(saved_checkpoints) > 10:
         old_checkpoint = saved_checkpoints.pop(0)
         os.remove(old_checkpoint)
         logger.info(f'Deleted old checkpoint: {old_checkpoint}')
+
+    while len(saved_confusion_matrices) > 10:
+        old_cm = saved_confusion_matrices.pop(0)
+        os.remove(f"{old_cm}.png")
+        os.remove(f"{old_cm}.npy")
+        logger.info(f'Deleted old confusion matrix: {old_cm}')
 
     return net
 
