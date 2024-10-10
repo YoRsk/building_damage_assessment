@@ -228,6 +228,9 @@ def train_net(net,
     saved_checkpoints = []
     saved_confusion_matrices = []
     
+    # 用于跟踪已保存的日志文件
+    saved_log_files = []
+
     for epoch in range(start_epoch, start_epoch + epochs):
         net.train()
         epoch_loss = 0
@@ -417,11 +420,23 @@ def train_net(net,
         # 定期保存training_data到log文件
         if epoch % 5 == 0 or epoch == epochs - 1:
             filename = f"training_log_epoch_{epoch}.json"
+            file_path = save_dir / filename
             try: 
-                with open(save_dir / filename, 'w') as f:
+                with open(file_path, 'w') as f:
                     json.dump(training_data, f, indent=4, cls=TensorEncoder)
+                
+                saved_log_files.append(file_path)
+                logger.info(f'Saved training log to {file_path}')
+
+                # 如果保存的文件数量超过3个,删除最旧的文件
+                if len(saved_log_files) > 3:
+                    oldest_file = saved_log_files.pop(0)
+                    if oldest_file.exists():
+                        oldest_file.unlink()
+                        logger.info(f'Deleted old log file: {oldest_file}')
+
             except TypeError as e:
-                print(f"捕获到异常：{e}")
+                logger.error(f"捕获到异常：{e}")
 
         # # 保存混淆矩阵
         # if val_confusion_matrix is not None:
