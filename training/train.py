@@ -101,8 +101,11 @@ def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
     # 移除 "unclassified" 类别（假设它是第一行和第一列）
     confusion_matrix = confusion_matrix[1:, 1:]
     
+    # 确保保存目录存在
+    os.makedirs(save_dir, exist_ok=True)
+    
     # 保存原始混淆矩阵为numpy数组
-    np.save(f"{save_dir}/{filename_prefix}_confusion_matrix.npy", confusion_matrix)
+    np.save(os.path.join(save_dir, f"{filename_prefix}_confusion_matrix.npy"), confusion_matrix)
     
     # 创建热力图
     plt.figure(figsize=(10, 8))
@@ -114,7 +117,7 @@ def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
     plt.ylabel('True')
     
     # 保存图片
-    plt.savefig(f"{save_dir}/{filename_prefix}_confusion_matrix.png")
+    plt.savefig(os.path.join(save_dir, f"{filename_prefix}_confusion_matrix.png"))
     plt.close()
 ###############
 def train_net(net,
@@ -371,18 +374,22 @@ def train_net(net,
                 os.remove(old_checkpoint)
                 logger.info(f'Deleted old checkpoint: {old_checkpoint}')
             
-            # 保存混淆矩阵
-            if val_confusion_matrix is not None:
-                cm_path = f"{save_dir}/epoch_{epoch}_validation_confusion_matrix"
-                save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
-                saved_confusion_matrices.append(cm_path)
-                
-                # 删除旧的混淆矩阵
-                if len(saved_confusion_matrices) > 10:
-                    old_cm = saved_confusion_matrices.pop(0)
+        # 保存混淆矩阵
+        if val_confusion_matrix is not None:
+            cm_path = os.path.join(save_dir, f"epoch_{epoch}_validation_confusion_matrix")
+            save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
+            saved_confusion_matrices.append(cm_path)
+            logger.info(f'Confusion Matrix {epoch} saved!')
+            # 删除旧的混淆矩阵
+            if len(saved_confusion_matrices) > 10:
+                old_cm = saved_confusion_matrices.pop(0)
+                if os.path.exists(f"{old_cm}.png"):
                     os.remove(f"{old_cm}.png")
+                if os.path.exists(f"{old_cm}.npy"):
                     os.remove(f"{old_cm}.npy")
-                    logger.info(f'Deleted old confusion matrix: {old_cm}.png and {old_cm}.npy')
+                logger.info(f'Deleted old confusion matrix: {old_cm}.png and {old_cm}.npy')
+        else:
+            logger.info("val_confusion_matrix is None")
         # 保存到 ClearML
         if task:
              task.get_logger().report_scalar("Accuracy", "train", value=train_acc, iteration=epoch)
@@ -443,8 +450,10 @@ def train_net(net,
 
     while len(saved_confusion_matrices) > 10:
         old_cm = saved_confusion_matrices.pop(0)
-        os.remove(f"{old_cm}.png")
-        os.remove(f"{old_cm}.npy")
+        if os.path.exists(f"{old_cm}.png"):
+            os.remove(f"{old_cm}.png")
+        if os.path.exists(f"{old_cm}.npy"):
+            os.remove(f"{old_cm}.npy")
         logger.info(f'Deleted old confusion matrix: {old_cm}')
 
     return net
