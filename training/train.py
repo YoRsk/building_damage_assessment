@@ -260,8 +260,8 @@ def train_net(net,
                     if traintype == 'both':
                         masks_pred = net(preimage, postimage)
                         # 暂时不用交叉熵
-                        # loss = criterion(masks_pred, post_masks)
-                        loss = dice_loss(
+                        loss = criterion(masks_pred, post_masks)
+                        loss += dice_loss(
                             F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
                             F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
                             multiclass=True
