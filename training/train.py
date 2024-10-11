@@ -97,25 +97,22 @@ def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
     # 确保 confusion_matrix 是 numpy 数组
     if isinstance(confusion_matrix, torch.Tensor):
         confusion_matrix = confusion_matrix.cpu().numpy()
-    
-    # 移除 "unclassified" 类别（假设它是第一行和第一列）
-    confusion_matrix = confusion_matrix[1:, 1:]
-    
+
+    # # 移除 "unclassified" 类别（假设它是第一行和第一列）
+    # confusion_matrix = confusion_matrix[1:, 1:]
+
     # 确保保存目录存在
     os.makedirs(save_dir, exist_ok=True)
-    
+
     # 保存原始混淆矩阵为numpy数组
     np.save(os.path.join(save_dir, f"{filename_prefix}_confusion_matrix.npy"), confusion_matrix)
-    
+
     # 创建热力图
     plt.figure(figsize=(10, 8))
     sns.heatmap(confusion_matrix, annot=True, fmt='.3f', cmap='Blues',
-                xticklabels=range(1, 5),  # 使用1、2、3, 4作为标签
-                yticklabels=range(1, 5))  # 使用1、2、3, 4作为标签
+                xticklabels=range(0, 5),  # 使用0 1、2、3, 4作为标签
+                yticklabels=range(0, 5))  # 使用0 1、2、3, 4作为标签
     plt.title('Confusion Matrix in Damage Level')
-    plt.xlabel('Predicted')
-    plt.ylabel('True')
-    
     # 保存图片
     plt.savefig(os.path.join(save_dir, f"{filename_prefix}_confusion_matrix.png"))
     plt.close()
@@ -212,12 +209,13 @@ def train_net(net,
 #########################################################
 
     # 4. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
-    #optimizer = optim.RMSprop(net.parameters(), lr=learning_rate, weight_decay=1e-6, momentum=0.9, foreach=True)
-    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5,11,17,23,29,33,55,78,100], gamma=0.30)
-    #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, verbose=True)
+      #optimizer = optim.RMSprop(net.parameters(), lr=learning_rate, weight_decay=1e-6, momentum=0.9, foreach=True)
+    optimizer = optim.Adam(net.parameters(), lr=learning_rate)    
+    # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5,11,17,23,29,33,55,78,100], gamma=0.30)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=32, verbose=True)
+    # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, verbose=True)
     # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,6,9,12,15,18,19,20,33,47,50,60,70,90,110,130,150,170,180,190], gamma=0.5)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
+    # scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
     grad_scaler = torch.amp.GradScaler('cuda', enabled=ampbool)
     criterion = closs
     
@@ -455,13 +453,13 @@ def train_net(net,
         #     save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
 
     # Final evaluation on test set
-    test_score, test_class_scores, test_loss, test_f1_macro, test_f1_per_class, test_iou, test_confusion_matrix, test_auc_roc = evaluate(net, test_loader, device, ampbool, traintype)
+    test_score, test_class_scores, test_loss, test_f1_macro, test_f1_per_class, test_iou, test_confusion_matrix= evaluate(net, test_loader, device, ampbool, traintype)
     print('Final Test Results:')
     print(f'Test - Dice Score: {test_score:.4f}, F1 Score (macro): {test_f1_macro:.4f}, IoU: {test_iou:.4f}')
     print(f'Test - Class Dice Scores: {[f"{score:.4f}" for score in test_class_scores]}')
     print(f'Test - F1 Score per class: {[f"{f1:.4f}" for f1 in test_f1_per_class]}')
     print(f'Test Loss: {test_loss:.4f}')
-    print(f'Test - AUC-ROC: {test_auc_roc:.4f}')
+    # print(f'Test - AUC-ROC: {test_auc_roc:.4f}')
     ########
     # 保存最终结果
     final_filename = f"final_training_log.json"
@@ -476,20 +474,20 @@ def train_net(net,
     if test_confusion_matrix is not None:
         save_confusion_matrix(test_confusion_matrix, str(save_dir), "final_test")
 
-    # 训练循环结束后
-    while len(saved_checkpoints) > 10:
-        old_checkpoint = Path(saved_checkpoints.pop(0))
-        if old_checkpoint.exists():
-            old_checkpoint.unlink()
-            logger.info(f'Deleted old checkpoint: {old_checkpoint}')
+    # # 训练循环结束后
+    # while len(saved_checkpoints) > 10:
+    #     old_checkpoint = Path(saved_checkpoints.pop(0))
+    #     if old_checkpoint.exists():
+    #         old_checkpoint.unlink()
+    #         logger.info(f'Deleted old checkpoint: {old_checkpoint}')
 
-    while len(saved_confusion_matrices) > 10:
-        old_cm = Path(saved_confusion_matrices.pop(0))
-        if (old_cm.with_suffix('.png')).exists():
-            (old_cm.with_suffix('.png')).unlink()
-        if (old_cm.with_suffix('.npy')).exists():
-            (old_cm.with_suffix('.npy')).unlink()
-        logger.info(f'Deleted old confusion matrix: {old_cm}')
+    # while len(saved_confusion_matrices) > 10:
+    #     old_cm = Path(saved_confusion_matrices.pop(0))
+    #     if (old_cm.with_suffix('.png')).exists():
+    #         (old_cm.with_suffix('.png')).unlink()
+    #     if (old_cm.with_suffix('.npy')).exists():
+    #         (old_cm.with_suffix('.npy')).unlink()
+    #     logger.info(f'Deleted old confusion matrix: {old_cm}')
 
     return net
 
@@ -507,9 +505,9 @@ epochs = 50
 # epochs = 11
 batch_size = 4
 # batch_size = 1
-lr = 2.69e-4
+# lr = 2.69e-4
 # lr = 8.125358e-4
-#lr = 1.38e-4
+lr = 1.38e-4
 # lr = 1e-6
 scale = 1
 train = 1
