@@ -390,19 +390,12 @@ def train_net(net,
             save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
 
     # Final evaluation on test set
-<<<<<<< Updated upstream
-    test_score, test_class_scores, test_loss, test_f1, test_iou, test_confusion_matrix = evaluate(net, test_loader, device, ampbool, traintype)
-=======
     test_score, test_class_scores, test_loss, test_f1_macro, test_f1_per_class, test_iou, test_confusion_matrix = evaluate(net, test_loader, device, ampbool, traintype)
->>>>>>> Stashed changes
     print('Final Test Results:')
     print(f'Test - Dice Score: {test_score:.4f}, F1 Score: {test_f1:.4f}, IoU: {test_iou:.4f}')
     print(f'Test - Class Dice Scores: {[f"{score:.4f}" for score in test_class_scores]}')
     print(f'Test Loss: {test_loss:.4f}')
-<<<<<<< Updated upstream
-=======
     # print(f'Test - AUC-ROC: {test_auc_roc:.4f}')
->>>>>>> Stashed changes
     ########
     # 保存最终结果
     final_filename = f"final_training_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -439,11 +432,8 @@ epochs = 10
 batch_size = 4
 batch_size = 4
 # batch_size = 1
-<<<<<<< Updated upstream
-=======
 # lr = 2.69e-4
 # lr = 8.125358e-4
->>>>>>> Stashed changes
 lr = 1.38e-4
 # lr = 1e-6
 scale = 1
