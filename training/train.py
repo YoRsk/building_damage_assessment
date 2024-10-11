@@ -80,6 +80,7 @@ def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
     if isinstance(confusion_matrix, torch.Tensor):
         confusion_matrix = confusion_matrix.cpu().numpy()
     
+<<<<<<< Updated upstream
     # 保存为 numpy 数组
     np.save(f"{save_dir}/{filename_prefix}_confusion_matrix.npy", confusion_matrix)
     
@@ -87,6 +88,23 @@ def save_confusion_matrix(confusion_matrix, save_dir, filename_prefix):
     plt.figure(figsize=(10, 8))
     sns.heatmap(confusion_matrix, annot=True, fmt='d', cmap='Blues')
     plt.title('Confusion Matrix')
+=======
+    # # 移除 "unclassified" 类别（假设它是第一行和第一列）
+    # confusion_matrix = confusion_matrix[1:, 1:]
+    
+    # 确保保存目录存在
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # 保存原始混淆矩阵为numpy数组
+    np.save(os.path.join(save_dir, f"{filename_prefix}_confusion_matrix.npy"), confusion_matrix)
+    
+    # 创建热力图
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(confusion_matrix, annot=True, fmt='.3f', cmap='Blues',
+                xticklabels=range(0, 5),  # 使用0 1、2、3, 4作为标签
+                yticklabels=range(0, 5))  # 使用0 1、2、3, 4作为标签
+    plt.title('Confusion Matrix in Damage Level')
+>>>>>>> Stashed changes
     plt.xlabel('Predicted')
     plt.ylabel('True')
     
@@ -169,11 +187,12 @@ def train_net(net,
 
     # 4. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
     #optimizer = optim.RMSprop(net.parameters(), lr=learning_rate, weight_decay=1e-6, momentum=0.9, foreach=True)
-    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5,11,17,23,29,33,55,78,100], gamma=0.30)
-    #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, verbose=True)
+    optimizer = optim.Adam(net.parameters(), lr=learning_rate)    
+    # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5,11,17,23,29,33,55,78,100], gamma=0.30)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=32, verbose=True)
+    # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, verbose=True)
     # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,6,9,12,15,18,19,20,33,47,50,60,70,90,110,130,150,170,180,190], gamma=0.5)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
+    # scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
     grad_scaler = torch.amp.GradScaler('cuda', enabled=ampbool)
     criterion = closs
     
@@ -371,11 +390,19 @@ def train_net(net,
             save_confusion_matrix(val_confusion_matrix, save_dir, f"epoch_{epoch}_validation")
 
     # Final evaluation on test set
+<<<<<<< Updated upstream
     test_score, test_class_scores, test_loss, test_f1, test_iou, test_confusion_matrix = evaluate(net, test_loader, device, ampbool, traintype)
+=======
+    test_score, test_class_scores, test_loss, test_f1_macro, test_f1_per_class, test_iou, test_confusion_matrix = evaluate(net, test_loader, device, ampbool, traintype)
+>>>>>>> Stashed changes
     print('Final Test Results:')
     print(f'Test - Dice Score: {test_score:.4f}, F1 Score: {test_f1:.4f}, IoU: {test_iou:.4f}')
     print(f'Test - Class Dice Scores: {[f"{score:.4f}" for score in test_class_scores]}')
     print(f'Test Loss: {test_loss:.4f}')
+<<<<<<< Updated upstream
+=======
+    # print(f'Test - AUC-ROC: {test_auc_roc:.4f}')
+>>>>>>> Stashed changes
     ########
     # 保存最终结果
     final_filename = f"final_training_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -412,6 +439,11 @@ epochs = 10
 batch_size = 4
 batch_size = 4
 # batch_size = 1
+<<<<<<< Updated upstream
+=======
+# lr = 2.69e-4
+# lr = 8.125358e-4
+>>>>>>> Stashed changes
 lr = 1.38e-4
 # lr = 1e-6
 scale = 1
@@ -433,7 +465,7 @@ mem_bufs = sum([buf.nelement()*buf.element_size() for buf in net.buffers()])
 mem = mem_params + mem_bufs
 
 if __name__ == '__main__':
-    task = Task.init(project_name="damage-assessment", task_name="train SiameseUNetWithResnet50Encoder 0920")
+    task = Task.init(project_name="damage-assessment", task_name="train SiameseUNetWithResnet50Encoder")
 
     # task_id_to_resume = "432ff2e399124e32977edbeb13c7e30a"  # 替换为您想恢复的任务 ID
 

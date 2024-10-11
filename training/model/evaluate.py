@@ -67,8 +67,11 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
 
                     pbar.update(postimage.shape[0])
                     pbar.set_postfix(**{'loss (batch)': loss.item()})
+<<<<<<< Updated upstream
                     epoch_loss += loss.item()
 
+=======
+>>>>>>> Stashed changes
             if (traintype == 'post'):
                 for batch in dataloader:
                     postimage, true_masks = batch['postimage'], batch['postmask']
@@ -98,7 +101,7 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
 
                     pbar.update(postimage.shape[0])
                     pbar.set_postfix(**{'loss (batch)': loss.item()})
-                    epoch_loss += loss.item()
+            epoch_loss += loss.item()
 
         net.train()
 
@@ -111,4 +114,12 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
         iou = iou_score.compute()
         confusion_matrix = confmat.compute()
 
+<<<<<<< Updated upstream
         return [dice_score / num_val_batches, [i / num_val_batches for i in dice_score_class], epoch_loss, f1, iou, confusion_matrix]
+=======
+        # # 移除未分类类别的结果
+        # confusion_matrix = confusion_matrix[1:, 1:]
+
+        return [dice_score / num_val_batches, [i / num_val_batches for i in dice_score_class], 
+                epoch_loss, f1_macro, f1_per_class, iou, confusion_matrix]
+>>>>>>> Stashed changes

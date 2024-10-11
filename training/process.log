@@ -1,0 +1,233 @@
+2024-10-10 15:33:11,118 - __main__ - INFO - Checkpoint 1 saved!
+2024-10-10 15:33:11,948 - __main__ - INFO - Confusion Matrix 1 saved!
+2024-10-10 15:33:30,308 - __main__ - INFO - Checkpoint 2 saved!
+2024-10-10 15:33:31,161 - __main__ - INFO - Confusion Matrix 2 saved!
+2024-10-10 15:33:49,615 - __main__ - INFO - Checkpoint 3 saved!
+2024-10-10 15:33:50,296 - __main__ - INFO - Confusion Matrix 3 saved!
+2024-10-10 15:34:08,889 - __main__ - INFO - Checkpoint 4 saved!
+2024-10-10 15:34:09,609 - __main__ - INFO - Confusion Matrix 4 saved!
+2024-10-10 15:34:27,986 - __main__ - INFO - Checkpoint 5 saved!
+2024-10-10 15:34:28,716 - __main__ - INFO - Confusion Matrix 5 saved!
+2024-10-10 15:34:28,718 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_8.1e-04_20241010_153251\training_log_epoch_5.json
+2024-10-10 15:34:47,803 - __main__ - INFO - Checkpoint 6 saved!
+2024-10-10 15:34:48,507 - __main__ - INFO - Confusion Matrix 6 saved!
+2024-10-10 15:35:06,700 - __main__ - INFO - Checkpoint 7 saved!
+2024-10-10 15:35:07,412 - __main__ - INFO - Confusion Matrix 7 saved!
+2024-10-10 15:35:25,722 - __main__ - INFO - Checkpoint 8 saved!
+2024-10-10 15:35:26,429 - __main__ - INFO - Confusion Matrix 8 saved!
+2024-10-10 15:35:44,742 - __main__ - INFO - Checkpoint 9 saved!
+2024-10-10 15:35:45,471 - __main__ - INFO - Confusion Matrix 9 saved!
+2024-10-10 15:36:03,701 - __main__ - INFO - Checkpoint 10 saved!
+2024-10-10 15:36:04,405 - __main__ - INFO - Confusion Matrix 10 saved!
+2024-10-10 15:36:04,408 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_8.1e-04_20241010_153251\training_log_epoch_10.json
+2024-10-10 15:36:22,768 - __main__ - INFO - Checkpoint 11 saved!
+2024-10-10 15:36:22,800 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_8.1e-04_20241010_153251\checkpoint_epoch1.pth
+2024-10-10 15:36:23,533 - __main__ - INFO - Confusion Matrix 11 saved!
+2024-10-10 15:36:23,533 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_8.1e-04_20241010_153251\epoch_1_validation_confusion_matrix
+2024-10-10 19:51:03,647 - __main__ - INFO - Checkpoint 1 saved!
+2024-10-10 19:51:04,447 - __main__ - INFO - Confusion Matrix 1 saved!
+2024-10-10 20:01:27,700 - __main__ - INFO - Checkpoint 2 saved!
+2024-10-10 20:01:28,390 - __main__ - INFO - Confusion Matrix 2 saved!
+2024-10-10 20:11:51,078 - __main__ - INFO - Checkpoint 3 saved!
+2024-10-10 20:11:51,761 - __main__ - INFO - Confusion Matrix 3 saved!
+2024-10-10 20:22:15,560 - __main__ - INFO - Checkpoint 4 saved!
+2024-10-10 20:22:16,242 - __main__ - INFO - Confusion Matrix 4 saved!
+2024-10-10 20:32:37,425 - __main__ - INFO - Checkpoint 5 saved!
+2024-10-10 20:32:38,133 - __main__ - INFO - Confusion Matrix 5 saved!
+2024-10-10 20:32:38,135 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_5.json
+2024-10-10 20:42:57,947 - __main__ - INFO - Checkpoint 6 saved!
+2024-10-10 20:42:58,997 - __main__ - INFO - Confusion Matrix 6 saved!
+2024-10-10 20:53:19,161 - __main__ - INFO - Checkpoint 7 saved!
+2024-10-10 20:53:19,839 - __main__ - INFO - Confusion Matrix 7 saved!
+2024-10-10 21:03:40,452 - __main__ - INFO - Checkpoint 8 saved!
+2024-10-10 21:03:41,142 - __main__ - INFO - Confusion Matrix 8 saved!
+2024-10-10 21:13:59,565 - __main__ - INFO - Checkpoint 9 saved!
+2024-10-10 21:14:00,243 - __main__ - INFO - Confusion Matrix 9 saved!
+2024-10-10 21:24:18,085 - __main__ - INFO - Checkpoint 10 saved!
+2024-10-10 21:24:18,771 - __main__ - INFO - Confusion Matrix 10 saved!
+2024-10-10 21:24:18,773 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_10.json
+2024-10-10 21:34:37,662 - __main__ - INFO - Checkpoint 11 saved!
+2024-10-10 21:34:37,701 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch1.pth
+2024-10-10 21:34:38,402 - __main__ - INFO - Confusion Matrix 11 saved!
+2024-10-10 21:34:38,403 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_1_validation_confusion_matrix
+2024-10-10 21:44:56,157 - __main__ - INFO - Checkpoint 12 saved!
+2024-10-10 21:44:56,189 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch2.pth
+2024-10-10 21:44:56,887 - __main__ - INFO - Confusion Matrix 12 saved!
+2024-10-10 21:44:56,888 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_2_validation_confusion_matrix
+2024-10-10 21:55:14,175 - __main__ - INFO - Checkpoint 13 saved!
+2024-10-10 21:55:14,206 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch3.pth
+2024-10-10 21:55:14,888 - __main__ - INFO - Confusion Matrix 13 saved!
+2024-10-10 21:55:14,889 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_3_validation_confusion_matrix
+2024-10-10 22:05:30,259 - __main__ - INFO - Checkpoint 14 saved!
+2024-10-10 22:05:30,292 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch4.pth
+2024-10-10 22:05:30,992 - __main__ - INFO - Confusion Matrix 14 saved!
+2024-10-10 22:05:30,993 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_4_validation_confusion_matrix
+2024-10-10 22:15:38,200 - __main__ - INFO - Checkpoint 15 saved!
+2024-10-10 22:15:38,232 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch5.pth
+2024-10-10 22:15:38,938 - __main__ - INFO - Confusion Matrix 15 saved!
+2024-10-10 22:15:38,938 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_5_validation_confusion_matrix
+2024-10-10 22:15:38,940 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_15.json
+2024-10-10 22:25:39,672 - __main__ - INFO - Checkpoint 16 saved!
+2024-10-10 22:25:39,710 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch6.pth
+2024-10-10 22:25:40,423 - __main__ - INFO - Confusion Matrix 16 saved!
+2024-10-10 22:25:40,424 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_6_validation_confusion_matrix
+2024-10-10 22:35:42,366 - __main__ - INFO - Checkpoint 17 saved!
+2024-10-10 22:35:42,400 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch7.pth
+2024-10-10 22:35:43,101 - __main__ - INFO - Confusion Matrix 17 saved!
+2024-10-10 22:35:43,101 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_7_validation_confusion_matrix
+2024-10-10 22:45:44,989 - __main__ - INFO - Checkpoint 18 saved!
+2024-10-10 22:45:45,022 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch8.pth
+2024-10-10 22:45:45,719 - __main__ - INFO - Confusion Matrix 18 saved!
+2024-10-10 22:45:45,720 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_8_validation_confusion_matrix
+2024-10-10 22:55:47,691 - __main__ - INFO - Checkpoint 19 saved!
+2024-10-10 22:55:47,725 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch9.pth
+2024-10-10 22:55:48,423 - __main__ - INFO - Confusion Matrix 19 saved!
+2024-10-10 22:55:48,424 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_9_validation_confusion_matrix
+2024-10-10 23:05:50,079 - __main__ - INFO - Checkpoint 20 saved!
+2024-10-10 23:05:50,113 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch10.pth
+2024-10-10 23:05:50,803 - __main__ - INFO - Confusion Matrix 20 saved!
+2024-10-10 23:05:50,803 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_10_validation_confusion_matrix
+2024-10-10 23:05:50,806 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_20.json
+2024-10-10 23:05:50,806 - __main__ - INFO - Deleted old log file: training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_5.json
+2024-10-10 23:15:52,392 - __main__ - INFO - Checkpoint 21 saved!
+2024-10-10 23:15:52,427 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch11.pth
+2024-10-10 23:15:53,111 - __main__ - INFO - Confusion Matrix 21 saved!
+2024-10-10 23:15:53,112 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_11_validation_confusion_matrix
+2024-10-10 23:25:55,223 - __main__ - INFO - Checkpoint 22 saved!
+2024-10-10 23:25:55,262 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch12.pth
+2024-10-10 23:25:55,953 - __main__ - INFO - Confusion Matrix 22 saved!
+2024-10-10 23:25:55,954 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_12_validation_confusion_matrix
+2024-10-10 23:35:57,901 - __main__ - INFO - Checkpoint 23 saved!
+2024-10-10 23:35:57,933 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch13.pth
+2024-10-10 23:35:58,656 - __main__ - INFO - Confusion Matrix 23 saved!
+2024-10-10 23:35:58,656 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_13_validation_confusion_matrix
+2024-10-10 23:45:59,315 - __main__ - INFO - Checkpoint 24 saved!
+2024-10-10 23:45:59,348 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch14.pth
+2024-10-10 23:46:00,045 - __main__ - INFO - Confusion Matrix 24 saved!
+2024-10-10 23:46:00,046 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_14_validation_confusion_matrix
+2024-10-10 23:56:00,717 - __main__ - INFO - Checkpoint 25 saved!
+2024-10-10 23:56:00,750 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch15.pth
+2024-10-10 23:56:01,450 - __main__ - INFO - Confusion Matrix 25 saved!
+2024-10-10 23:56:01,451 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_15_validation_confusion_matrix
+2024-10-10 23:56:01,454 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_25.json
+2024-10-10 23:56:01,454 - __main__ - INFO - Deleted old log file: training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_10.json
+2024-10-11 00:06:01,637 - __main__ - INFO - Checkpoint 26 saved!
+2024-10-11 00:06:01,670 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch16.pth
+2024-10-11 00:06:02,370 - __main__ - INFO - Confusion Matrix 26 saved!
+2024-10-11 00:06:02,370 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_16_validation_confusion_matrix
+2024-10-11 00:16:03,264 - __main__ - INFO - Checkpoint 27 saved!
+2024-10-11 00:16:03,297 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch17.pth
+2024-10-11 00:16:03,983 - __main__ - INFO - Confusion Matrix 27 saved!
+2024-10-11 00:16:03,983 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_17_validation_confusion_matrix
+2024-10-11 00:26:05,024 - __main__ - INFO - Checkpoint 28 saved!
+2024-10-11 00:26:05,058 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch18.pth
+2024-10-11 00:26:05,757 - __main__ - INFO - Confusion Matrix 28 saved!
+2024-10-11 00:26:05,758 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_18_validation_confusion_matrix
+2024-10-11 00:36:06,598 - __main__ - INFO - Checkpoint 29 saved!
+2024-10-11 00:36:06,631 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch19.pth
+2024-10-11 00:36:07,354 - __main__ - INFO - Confusion Matrix 29 saved!
+2024-10-11 00:36:07,355 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_19_validation_confusion_matrix
+2024-10-11 00:46:07,896 - __main__ - INFO - Checkpoint 30 saved!
+2024-10-11 00:46:07,929 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch20.pth
+2024-10-11 00:46:08,632 - __main__ - INFO - Confusion Matrix 30 saved!
+2024-10-11 00:46:08,633 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_20_validation_confusion_matrix
+2024-10-11 00:46:08,639 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_30.json
+2024-10-11 00:46:08,639 - __main__ - INFO - Deleted old log file: training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_15.json
+2024-10-11 00:56:08,088 - __main__ - INFO - Checkpoint 31 saved!
+2024-10-11 00:56:08,121 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch21.pth
+2024-10-11 00:56:08,811 - __main__ - INFO - Confusion Matrix 31 saved!
+2024-10-11 00:56:08,811 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_21_validation_confusion_matrix
+2024-10-11 01:06:08,154 - __main__ - INFO - Checkpoint 32 saved!
+2024-10-11 01:06:08,187 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch22.pth
+2024-10-11 01:06:08,877 - __main__ - INFO - Confusion Matrix 32 saved!
+2024-10-11 01:06:08,878 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_22_validation_confusion_matrix
+2024-10-11 01:16:11,199 - __main__ - INFO - Checkpoint 33 saved!
+2024-10-11 01:16:11,233 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch23.pth
+2024-10-11 01:16:11,924 - __main__ - INFO - Confusion Matrix 33 saved!
+2024-10-11 01:16:11,925 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_23_validation_confusion_matrix
+2024-10-11 01:26:11,979 - __main__ - INFO - Checkpoint 34 saved!
+2024-10-11 01:26:12,015 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch24.pth
+2024-10-11 01:26:12,871 - __main__ - INFO - Confusion Matrix 34 saved!
+2024-10-11 01:26:12,871 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_24_validation_confusion_matrix
+2024-10-11 01:36:12,939 - __main__ - INFO - Checkpoint 35 saved!
+2024-10-11 01:36:12,973 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch25.pth
+2024-10-11 01:36:13,674 - __main__ - INFO - Confusion Matrix 35 saved!
+2024-10-11 01:36:13,674 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_25_validation_confusion_matrix
+2024-10-11 01:36:13,678 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_35.json
+2024-10-11 01:36:13,678 - __main__ - INFO - Deleted old log file: training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_20.json
+2024-10-11 01:46:13,717 - __main__ - INFO - Checkpoint 36 saved!
+2024-10-11 01:46:13,752 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch26.pth
+2024-10-11 01:46:14,459 - __main__ - INFO - Confusion Matrix 36 saved!
+2024-10-11 01:46:14,460 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_26_validation_confusion_matrix
+2024-10-11 01:56:14,285 - __main__ - INFO - Checkpoint 37 saved!
+2024-10-11 01:56:14,320 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch27.pth
+2024-10-11 01:56:15,011 - __main__ - INFO - Confusion Matrix 37 saved!
+2024-10-11 01:56:15,012 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_27_validation_confusion_matrix
+2024-10-11 02:06:14,152 - __main__ - INFO - Checkpoint 38 saved!
+2024-10-11 02:06:14,186 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch28.pth
+2024-10-11 02:06:14,883 - __main__ - INFO - Confusion Matrix 38 saved!
+2024-10-11 02:06:14,884 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_28_validation_confusion_matrix
+2024-10-11 02:16:14,159 - __main__ - INFO - Checkpoint 39 saved!
+2024-10-11 02:16:14,194 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch29.pth
+2024-10-11 02:16:14,893 - __main__ - INFO - Confusion Matrix 39 saved!
+2024-10-11 02:16:14,893 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_29_validation_confusion_matrix
+2024-10-11 02:26:13,793 - __main__ - INFO - Checkpoint 40 saved!
+2024-10-11 02:26:13,828 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch30.pth
+2024-10-11 02:26:14,533 - __main__ - INFO - Confusion Matrix 40 saved!
+2024-10-11 02:26:14,534 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_30_validation_confusion_matrix
+2024-10-11 02:26:14,538 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_40.json
+2024-10-11 02:26:14,538 - __main__ - INFO - Deleted old log file: training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_25.json
+2024-10-11 02:36:14,115 - __main__ - INFO - Checkpoint 41 saved!
+2024-10-11 02:36:14,149 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch31.pth
+2024-10-11 02:36:14,850 - __main__ - INFO - Confusion Matrix 41 saved!
+2024-10-11 02:36:14,851 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_31_validation_confusion_matrix
+2024-10-11 02:46:14,899 - __main__ - INFO - Checkpoint 42 saved!
+2024-10-11 02:46:14,938 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch32.pth
+2024-10-11 02:46:15,646 - __main__ - INFO - Confusion Matrix 42 saved!
+2024-10-11 02:46:15,646 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_32_validation_confusion_matrix
+2024-10-11 02:56:17,774 - __main__ - INFO - Checkpoint 43 saved!
+2024-10-11 02:56:17,808 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch33.pth
+2024-10-11 02:56:18,512 - __main__ - INFO - Confusion Matrix 43 saved!
+2024-10-11 02:56:18,512 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_33_validation_confusion_matrix
+2024-10-11 03:06:16,367 - __main__ - INFO - Checkpoint 44 saved!
+2024-10-11 03:06:16,402 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch34.pth
+2024-10-11 03:06:17,107 - __main__ - INFO - Confusion Matrix 44 saved!
+2024-10-11 03:06:17,107 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_34_validation_confusion_matrix
+2024-10-11 03:16:14,375 - __main__ - INFO - Checkpoint 45 saved!
+2024-10-11 03:16:14,411 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch35.pth
+2024-10-11 03:16:15,121 - __main__ - INFO - Confusion Matrix 45 saved!
+2024-10-11 03:16:15,122 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_35_validation_confusion_matrix
+2024-10-11 03:16:15,126 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_45.json
+2024-10-11 03:16:15,126 - __main__ - INFO - Deleted old log file: training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_30.json
+2024-10-11 03:26:11,232 - __main__ - INFO - Checkpoint 46 saved!
+2024-10-11 03:26:11,266 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch36.pth
+2024-10-11 03:26:11,967 - __main__ - INFO - Confusion Matrix 46 saved!
+2024-10-11 03:26:11,967 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_36_validation_confusion_matrix
+2024-10-11 03:36:05,693 - __main__ - INFO - Checkpoint 47 saved!
+2024-10-11 03:36:05,728 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch37.pth
+2024-10-11 03:36:06,432 - __main__ - INFO - Confusion Matrix 47 saved!
+2024-10-11 03:36:06,432 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_37_validation_confusion_matrix
+2024-10-11 03:46:00,266 - __main__ - INFO - Checkpoint 48 saved!
+2024-10-11 03:46:00,302 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch38.pth
+2024-10-11 03:46:00,993 - __main__ - INFO - Confusion Matrix 48 saved!
+2024-10-11 03:46:00,994 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_38_validation_confusion_matrix
+2024-10-11 03:55:54,776 - __main__ - INFO - Checkpoint 49 saved!
+2024-10-11 03:55:54,812 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch39.pth
+2024-10-11 03:55:55,531 - __main__ - INFO - Confusion Matrix 49 saved!
+2024-10-11 03:55:55,532 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_39_validation_confusion_matrix
+2024-10-11 03:55:55,536 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_49.json
+2024-10-11 03:55:55,537 - __main__ - INFO - Deleted old log file: training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_35.json
+2024-10-11 04:05:52,751 - __main__ - INFO - Checkpoint 50 saved!
+2024-10-11 04:05:52,785 - __main__ - INFO - Deleted old checkpoint: checkpoints\v_1.3_lr_2.7e-04_20241010_193958\checkpoint_epoch40.pth
+2024-10-11 04:05:53,497 - __main__ - INFO - Confusion Matrix 50 saved!
+2024-10-11 04:05:53,498 - __main__ - INFO - Deleted old confusion matrix: training_logs\v_1.3_lr_2.7e-04_20241010_193958\epoch_40_validation_confusion_matrix
+2024-10-11 04:05:53,502 - __main__ - INFO - Saved training log to training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_50.json
+2024-10-11 04:05:53,503 - __main__ - INFO - Deleted old log file: training_logs\v_1.3_lr_2.7e-04_20241010_193958\training_log_epoch_40.json
+2024-10-11 15:26:24,221 - __main__ - INFO - Checkpoint 1 saved!
+2024-10-11 15:26:25,234 - __main__ - INFO - Confusion Matrix 1 saved!
+2024-10-11 15:36:55,004 - __main__ - INFO - Checkpoint 2 saved!
+2024-10-11 15:36:55,912 - __main__ - INFO - Confusion Matrix 2 saved!
+2024-10-11 15:47:12,695 - __main__ - INFO - Checkpoint 3 saved!
+2024-10-11 15:47:13,392 - __main__ - INFO - Confusion Matrix 3 saved!
+2024-10-11 15:57:24,413 - __main__ - INFO - Checkpoint 4 saved!
+2024-10-11 15:57:25,115 - __main__ - INFO - Confusion Matrix 4 saved!
