@@ -209,13 +209,22 @@ def train_net(net,
 #########################################################
 
     # 4. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
-      #optimizer = optim.RMSprop(net.parameters(), lr=learning_rate, weight_decay=1e-6, momentum=0.9, foreach=True)
+    '''
+    #optimizer = optim.RMSprop(net.parameters(), lr=learning_rate, weight_decay=1e-6, momentum=0.9, foreach=True)
     optimizer = optim.Adam(net.parameters(), lr=learning_rate)    
     # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5,11,17,23,29,33,55,78,100], gamma=0.30)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=32, verbose=True)
     # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, verbose=True)
     # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,6,9,12,15,18,19,20,33,47,50,60,70,90,110,130,150,170,180,190], gamma=0.5)
     # scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
+    grad_scaler = torch.amp.GradScaler('cuda', enabled=ampbool)
+    criterion = closs
+    '''
+    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5,11,17,23,29,33,55,78,100], gamma=0.30)
+    #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, verbose=True)
+    # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,6,9,12,15,18,19,20,33,47,50,60,70,90,110,130,150,170,180,190], gamma=0.5)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
     grad_scaler = torch.amp.GradScaler('cuda', enabled=ampbool)
     criterion = closs
     
@@ -388,8 +397,16 @@ def train_net(net,
             torch.save(net.state_dict(), str(checkpoint_path))
             saved_checkpoints.append(str(checkpoint_path))
             logger.info(f'Checkpoint {epoch} saved!')
+            # checkpoint = {
+            #     'model_state_dict': net.state_dict(),
+            #     'optimizer_state_dict': optimizer.state_dict(),
+            #     'scheduler_state_dict': scheduler.state_dict(),
+            #     'epoch': epoch
+            # }
+            # torch.save(checkpoint, str(dir_checkpoint / f'checkpoint_epoch{epoch}.pth'))
+
             # 删除旧的检查点
-            if len(saved_checkpoints) > 10:
+            if len(saved_checkpoints) > 20:
                 old_checkpoint = Path(saved_checkpoints.pop(0))
                 if old_checkpoint.exists():
                     old_checkpoint.unlink()
@@ -402,7 +419,7 @@ def train_net(net,
             saved_confusion_matrices.append(str(cm_path))
             logger.info(f'Confusion Matrix {epoch} saved!')
             # 删除旧的混淆矩阵
-            if len(saved_confusion_matrices) > 10:
+            if len(saved_confusion_matrices) > 20:
                 old_cm = Path(saved_confusion_matrices.pop(0))
                 if (old_cm.with_suffix('.png')).exists():
                     (old_cm.with_suffix('.png')).unlink()
@@ -494,20 +511,17 @@ def train_net(net,
 
 classes = 5
 bilinear = True
-loadstate = False
-# loadstate = True
-# load = './checkpoints/v_1.2_lr_5e-4/best.pth'
-# load = './checkpoints/Vgg19SiamConc/checkpoint_epoch12.pth'
-start_epoch = 1
-# start_epoch = 13
-# epochs = 100
-epochs = 50
-# epochs = 11
+loadstate = True
+load = './checkpoints/your_previous_checkpoint_dir/checkpoint_epoch100.pth'
+start_epoch = 101
+epochs = 100
 batch_size = 4
 # batch_size = 1
 # lr = 2.69e-4
 # lr = 8.125358e-4
 lr = 1.38e-4
+gamma = 0.98
+lr = lr * (gamma ** 100)  # 计算经过100个epoch后的学习率
 # lr = 1e-6
 scale = 1
 train = 1
