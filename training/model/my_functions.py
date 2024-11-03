@@ -198,3 +198,22 @@ class UNetWithResnet50Encoder(nn.Module):
 # inp = torch.rand((2, 3, 512, 512)).cuda()
 # out = model(inp)
 
+class UpBlockMid(nn.Module):
+    def __init__(self, in_channels, mid_channels, out_channels, up_sample_mode,bn = False):
+        super(UpBlockMid, self).__init__()
+        if up_sample_mode == 'conv_transpose':
+            self.up_sample = nn.ConvTranspose2d(in_channels, in_channels, kernel_size=2, stride=2)        
+        elif up_sample_mode == 'bilinear':
+            self.up_sample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        else:
+            raise ValueError("Unsupported `up_sample_mode` (can take one of `conv_transpose` or `bilinear`)")
+        if(bn):
+            self.double_conv = DoubleConv(mid_channels, out_channels,True)
+        else:
+            self.double_conv = DoubleConv(mid_channels, out_channels,False)
+
+    def forward(self, down_input, skip_input):
+        x = self.up_sample(down_input)
+        x = torch.cat([x, skip_input], dim=1)
+        return self.double_conv(x)    
+

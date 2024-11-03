@@ -1,4 +1,4 @@
-from model.my_models import SiameseUNetWithResnet50Encoder
+from model.my_models import SiameseUNetWithResnet50Encoder, SiamUNetConCVgg19
 # from model.cbam_res50 import ResNet50
 from model.evaluate import evaluate
 from utils.data_loading import SatelliteDataset
@@ -511,17 +511,20 @@ def train_net(net,
 
 classes = 5
 bilinear = True
-loadstate = True
-load = './checkpoints/best0921.pth'
-start_epoch = 101
-epochs = 200
+loadstate = False
+# loadstate = True
+# load = './checkpoints/best0921.pth'
+start_epoch = 1
+epochs = 100
 batch_size = 4
 # batch_size = 1
 # lr = 2.69e-4
 # lr = 8.125358e-4
+
 lr = 1.38e-4
-gamma = 0.98
-lr = lr * (gamma ** 100)  # 计算经过100个epoch后的学习率
+# gamma = 0.98
+# lr = lr * (gamma ** 100)  # 计算经过100个epoch后的学习率
+
 # lr = 1e-6
 scale = 1
 train = 1
@@ -532,8 +535,8 @@ ampbool = True
 save_checkpoint = True
 traintype = 'both'
 gradclip = 1.0
-# net = SiamUNetConCVgg19()
-net = SiameseUNetWithResnet50Encoder()
+net = SiamUNetConCVgg19()
+# net = SiameseUNetWithResnet50Encoder()
 # net = ResNet50()
 model_parameters = filter(lambda p: p.requires_grad, net.parameters())
 params = sum([np.prod(p.size()) for p in model_parameters])
@@ -542,7 +545,7 @@ mem_bufs = sum([buf.nelement()*buf.element_size() for buf in net.buffers()])
 mem = mem_params + mem_bufs
 
 if __name__ == '__main__':
-    task = Task.init(project_name="damage-assessment", task_name="train SiameseUNetWithResnet50Encoder 0920")
+    task = Task.init(project_name="damage-assessment", task_name="train SiamUNetConCVgg19 1103")
 
     # task_id_to_resume = "432ff2e399124e32977edbeb13c7e30a"  # 替换为您想恢复的任务 ID
 

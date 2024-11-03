@@ -5,6 +5,7 @@ import torch.nn as nn
 import torchvision
 import torchvision.models as models
 from torchvision.models import ResNet50_Weights
+from torchvision.models import vgg13_bn, vgg16_bn, vgg16, vgg19, vgg19_bn
 resnet = models.resnet50(weights=ResNet50_Weights.DEFAULT)
 
 # resnet = torchvision.models.resnet.resnet50(pretrained=True)
@@ -89,3 +90,51 @@ class SiameseUNetWithResnet50Encoder(nn.Module):
             pre_pools[f"layer_{i}"] = x1
             pre_pools[f"layer_{i}"] = x2
         '''
+class SiamUNetConCVgg19(nn.Module):
+    """Unet with VGG-13 (with BN), VGG-16 (with BN) encoder.
+    """
+
+    def __init__(self,out_channels=5):
+        super().__init__()
+        self.bn = False
+        self.up_sample_mode = 'conv_transpose'
+        self.encoder = vgg19(pretrained=True).features
+        self.block1 = nn.Sequential(*self.encoder[:4])
+        self.block2 = nn.Sequential(*self.encoder[4:9])
+        self.block3 = nn.Sequential(*self.encoder[9:18])
+        self.block4 = nn.Sequential(*self.encoder[18:27])
+        self.block5 = nn.Sequential(*self.encoder[27:36])
+
+        self.bottleneck = nn.Sequential(*self.encoder[36:])
+        # Upsampling Path
+        self.up_conv5 = UpBlockMid(512,1536,512, self.up_sample_mode,self.bn)
+        self.up_conv4 = UpBlockMid(512,1536,256,self.up_sample_mode,self.bn)
+        self.up_conv3 = UpBlockMid(256,768,128,self.up_sample_mode,self.bn)
+        self.up_conv2 = UpBlockMid(128,384,64,self.up_sample_mode,self.bn)
+        self.up_conv1 = UpBlockMid(64,192,64,self.up_sample_mode,self.bn)
+        # Final Convolution
+        self.conv_last = nn.Conv2d(64, out_channels, kernel_size=1)
+
+    def forward(self, x1,x2):
+        #input A
+        x11 = self.block1(x1)
+        x12 = self.block2(x11)
+        x13 = self.block3(x12)
+        x14 = self.block4(x13)
+        x15 = self.block5(x14)
+        #input B
+        x21 = self.block1(x2)
+        x22 = self.block2(x21)
+        x23 = self.block3(x22)
+        x24 = self.block4(x23)
+        x25 = self.block5(x24)
+        
+        
+        x = self.bottleneck(x25)
+        x = self.up_conv5(x, torch.cat((x15,x25),dim = 1))
+        x = self.up_conv4(x, torch.cat((x14,x24),dim = 1))
+        x = self.up_conv3(x, torch.cat((x13,x23),dim = 1))
+        x = self.up_conv2(x, torch.cat((x12,x22),dim = 1))
+        x = self.up_conv1(x, torch.cat((x11,x21),dim = 1))
+        x = self.conv_last(x)
+        return x
