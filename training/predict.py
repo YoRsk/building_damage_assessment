@@ -177,11 +177,11 @@ def predict_with_sliding_window(model, pre_image, post_image, window_size=1024, 
     return output.astype(np.uint8)
 
 def main():
-    model_path = 'path/to/your/trained/model.pth'
-    pre_image_path = 'path/to/large_pre_disaster_image.tif'
-    post_image_path = 'path/to/large_post_disaster_image.tif'
-    mask_path = 'path/to/ground_truth_mask.tif'  # 如果有的话
-    
+    model_path = './checkpoints/best0921.pth'
+    pre_image_path = './images/20210709_073742_79_2431_3B_Visual_clip.tif'
+    post_image_path = './images/20220709_072527_82_242b_3B_Visual_clip.tif'
+    mask_path = '' 
+    # mask_path = 'path/to/ground_truth_mask.tif'  # 如果有的话
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     model = load_model(model_path)
