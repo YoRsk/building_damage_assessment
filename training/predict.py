@@ -16,16 +16,39 @@ def load_model(model_path):
     model.eval()
     return model
 
+def preprocess_image(image, size=None):
+    if size is None:
+        # 确保宽高是32的倍数
+        w, h = image.size
+        w = ((w // 32) + (1 if w % 32 != 0 else 0)) * 32
+        h = ((h // 32) + (1 if h % 32 != 0 else 0)) * 32
+        size = (w, h)
+    
+    transform = transforms.Compose([
+        transforms.Resize(size),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                           std=[0.229, 0.224, 0.225])
+    ])
+    return transform(image)
+
 def predict_image(model, pre_image, post_image, device):
     model.to(device)
+    model.eval()      # 确保模型在评估模式
+    
+    # 预处理
+    pre_image = preprocess_image(pre_image)
+    post_image = preprocess_image(post_image)
+    
+    # 添加batch维度并移到设备
     pre_image = pre_image.unsqueeze(0).to(device)
     post_image = post_image.unsqueeze(0).to(device)
+    
     with torch.no_grad():
         output = model(pre_image, post_image)
     #.squeeze(): 由于输入只有一张图片，batch_size 为 1，这步操作去除了 batch 维度。结果形状变为 (height, width)。
     # argmax: get f(x)最大值
     return output.argmax(dim=1).squeeze().cpu().numpy()
-
 
 def visualize_prediction(image, mask, prediction):
     # 定义颜色映射
@@ -88,6 +111,57 @@ def calculate_metrics(prediction, ground_truth):
     
     return dice.item(), f1.item(), iou.item(), precision.item(), recall.item(), auc_roc.item()
 
+def predict_with_sliding_window(model, pre_image, post_image, window_size=1024, overlap=32, device='cuda'):
+    """
+    使用滑动窗口方式预测大图像
+    
+    Args:
+        model: 模型
+        pre_image: PIL Image 格式的灾前图像
+        post_image: PIL Image 格式的灾后图像
+        window_size: 窗口大小
+        overlap: 重叠区域大小
+        device: 设备
+    """
+    model.to(device)
+    model.eval()
+    
+    # 获取图像尺寸
+    width, height = pre_image.size
+    
+    # 计算步长
+    stride = window_size - overlap
+    
+    # 创建输出数组
+    output = np.zeros((height, width), dtype=np.uint8)
+    counts = np.zeros((height, width), dtype=np.uint8)
+    
+    # 滑动窗口
+    for y in range(0, height - overlap, stride):
+        for x in range(0, width - overlap, stride):
+            # 确定当前窗口的范围
+            end_y = min(y + window_size, height)
+            end_x = min(x + window_size, width)
+            y1 = max(0, y)
+            x1 = max(0, x)
+            
+            # 裁剪图像
+            pre_window = pre_image.crop((x1, y1, end_x, end_y))
+            post_window = post_image.crop((x1, y1, end_x, end_y))
+            
+            # 预测当前窗口
+            pred = predict_image(model, pre_window, post_window, device)
+            
+            # 将预测结果写入输出数组
+            output[y1:end_y, x1:end_x] += pred
+            counts[y1:end_y, x1:end_x] += 1
+    
+    # 取平均值
+    output = output / counts
+    
+    # 返回最终预测结果
+    return output.astype(np.uint8)
+
 def main():
     model_path = 'path/to/your/trained/model.pth'
     pre_image_path = 'path/to/large_pre_disaster_image.tif'
@@ -102,7 +176,14 @@ def main():
     post_image = Image.open(post_image_path)
     mask = Image.open(mask_path) if mask_path else None
     
-    prediction = predict_image(model, pre_image, post_image, device)
+    # 对于大图像使用滑动窗口
+    if pre_image.size[0] > 1024 or pre_image.size[1] > 1024:
+        prediction = predict_with_sliding_window(
+            model, pre_image, post_image, 
+            window_size=1024, overlap=32, device=device
+        )
+    else:
+        prediction = predict_image(model, pre_image, post_image, device)
     
     if mask is not None:
         mask_np = np.array(mask)
