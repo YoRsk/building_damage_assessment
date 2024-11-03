@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 def load_model(model_path):
     model = SiameseUNetWithResnet50Encoder()
-    model.load_state_dict(torch.load(model_path))
+    model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
     return model
 
@@ -77,7 +77,13 @@ def visualize_prediction(image, mask, prediction):
     bounds = np.arange(n_classes + 1)
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+    # 增加子图之间的间距
+    fig = plt.figure(figsize=(15, 5))
+    gs = plt.GridSpec(1, 3, figure=fig, wspace=0.3)
+    
+    ax1 = fig.add_subplot(gs[0])
+    ax2 = fig.add_subplot(gs[1])
+    ax3 = fig.add_subplot(gs[2])
     
     ax1.imshow(image)
     ax1.set_title('Original Image')
@@ -95,11 +101,15 @@ def visualize_prediction(image, mask, prediction):
     ax3.axis('off')
     
     # 添加颜色条
-    cbar = fig.colorbar(ax3.imshow(prediction, cmap=cmap, norm=norm), ax=[ax2, ax3], orientation='horizontal', aspect=30, pad=0.08)
+    cbar_ax = fig.add_axes([0.15, 0.05, 0.7, 0.02])  # [left, bottom, width, height]
+    cbar = plt.colorbar(
+        ax3.imshow(prediction, cmap=cmap, norm=norm),
+        cax=cbar_ax,
+        orientation='horizontal'
+    )
     cbar.set_ticks(bounds[:-1] + 0.5)
     cbar.set_ticklabels(['Unclassified', 'No Damage', 'Minor Damage', 'Major Damage', 'Destroyed'])
     
-    plt.tight_layout()
     plt.show()
 
 def calculate_metrics(prediction, ground_truth):
