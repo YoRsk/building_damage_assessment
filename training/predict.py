@@ -151,16 +151,15 @@ def predict_with_sliding_window(model, pre_image, post_image, window_size=1024, 
     # 计算步长
     stride = window_size - overlap
     
-    # 创建输出数组
-    output = np.zeros((height, width), dtype=np.uint8)
-    counts = np.zeros((height, width), dtype=np.uint8)
+    # 直接使用 float32
+    output = np.zeros((height, width), dtype=np.float32)
+    counts = np.zeros((height, width), dtype=np.float32)
     
     # 计算总窗口数
     y_steps = (height - overlap) // stride
     x_steps = (width - overlap) // stride
     total_steps = y_steps * x_steps
     
-    # 使用tqdm创建进度条
     with tqdm(total=total_steps, desc='Processing windows') as pbar:
         for y in range(0, height - overlap, stride):
             for x in range(0, width - overlap, stride):
@@ -177,18 +176,17 @@ def predict_with_sliding_window(model, pre_image, post_image, window_size=1024, 
                 # 预测当前窗口
                 pred = predict_image(model, pre_window, post_window, device)
                 
-                # 将预测结果写入输出数组
+                # 直接累加，不需要类型转换
                 output[y1:end_y, x1:end_x] += pred
                 counts[y1:end_y, x1:end_x] += 1
                 
                 # 更新进度条
                 pbar.update(1)
     
-    # 取平均值
-    output = output / counts
+    # 取平均并四舍五入
+    output = np.round(output / counts).astype(np.uint8)
     
-    # 返回最终预测结果
-    return output.astype(np.uint8)
+    return output
 
 def main():
     model_path = './checkpoints/best0921.pth'
