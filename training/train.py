@@ -220,11 +220,16 @@ def train_net(net,
     grad_scaler = torch.amp.GradScaler('cuda', enabled=ampbool)
     criterion = closs
     '''
-    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5,11,17,23,29,33,55,78,100], gamma=0.30)
-    #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, verbose=True)
+    # optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+    optimizer = optim.AdamW(
+        net.parameters(),
+        lr=learning_rate,
+        weight_decay=0.05  # 增加weight decay
+    )
+    #scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5,11,17,23,29,33,55,78,100], gamma=0.30)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-7) # 最小学习率
     # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,6,9,12,15,18,19,20,33,47,50,60,70,90,110,130,150,170,180,190], gamma=0.5)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
+    #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
     grad_scaler = torch.amp.GradScaler('cuda', enabled=ampbool)
     criterion = closs
     
@@ -268,13 +273,14 @@ def train_net(net,
                     masks_pred = None
                     if traintype == 'both':
                         masks_pred = net(preimage, postimage)
-                        # 暂时不用交叉熵
+                        # 交叉熵
                         loss = criterion(masks_pred, post_masks)
-                        loss += dice_loss(
-                            F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
-                            F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
-                            multiclass=True
-                        )
+                        loss += floss(masks_pred, post_masks)
+                        # loss += dice_loss(
+                        #     F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
+                        #     F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
+                        #     multiclass=True
+                        # )
                     # 可能用不了
                     elif traintype == 'pre':
                         masks_pred = net(preimage)
@@ -515,13 +521,13 @@ loadstate = False
 # loadstate = True
 # load = './checkpoints/best0921.pth'
 start_epoch = 1
-epochs = 100
+epochs = 60
 batch_size = 4
 # batch_size = 1
 # lr = 2.69e-4
 # lr = 8.125358e-4
 
-lr = 1.38e-4
+lr = 3.5e-5
 # gamma = 0.98
 # lr = lr * (gamma ** 100)  # 计算经过100个epoch后的学习率
 
