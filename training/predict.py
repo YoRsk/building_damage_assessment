@@ -169,18 +169,27 @@ def predict_with_sliding_window(model, pre_image, post_image, window_size=1024, 
                 y1 = max(0, y)
                 x1 = max(0, x)
                 
+                # 获取当前窗口的实际大小
+                current_height = end_y - y1
+                current_width = end_x - x1
+                
                 # 裁剪图像
                 pre_window = pre_image.crop((x1, y1, end_x, end_y))
                 post_window = post_image.crop((x1, y1, end_x, end_y))
                 
-                # 预测当前窗口
+                # 预测当前窗口，并指定目标大小
                 pred = predict_image(model, pre_window, post_window, device)
                 
-                # 直接累加，不需要类型转换
+                # 如果预测结果大小不匹配，需要调整大小
+                if pred.shape != (current_height, current_width):
+                    pred = transforms.Resize((current_height, current_width))(
+                        torch.from_numpy(pred).unsqueeze(0)
+                    ).squeeze(0).numpy()
+                
+                # 累加预测结果
                 output[y1:end_y, x1:end_x] += pred
                 counts[y1:end_y, x1:end_x] += 1
                 
-                # 更新进度条
                 pbar.update(1)
     
     # 取平均并四舍五入
@@ -215,13 +224,12 @@ def main():
     if mask is not None:
         mask_np = np.array(mask)
         visualize_prediction(np.array(post_image), mask_np, prediction)
-        dice, f1, iou, precision, recall, auc_roc = calculate_metrics(prediction, mask_np)
+        dice, f1, iou, precision, recall = calculate_metrics(prediction, mask_np)
         print(f'Dice Score: {dice:.4f}')
         print(f'F1 Score: {f1:.4f}')
         print(f'IoU: {iou:.4f}')
         print(f'Precision: {precision:.4f}')
         print(f'Recall: {recall:.4f}')
-        print(f'AUC-ROC: {auc_roc:.4f}')
     else:
         visualize_prediction(np.array(post_image), None, prediction)
 
