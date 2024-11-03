@@ -512,9 +512,9 @@ def train_net(net,
 classes = 5
 bilinear = True
 loadstate = True
-load = './checkpoints/your_previous_checkpoint_dir/checkpoint_epoch100.pth'
+load = './checkpoints/best0921.pth'
 start_epoch = 101
-epochs = 100
+epochs = 200
 batch_size = 4
 # batch_size = 1
 # lr = 2.69e-4
