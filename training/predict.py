@@ -209,9 +209,18 @@ def predict_with_sliding_window(model, pre_image, post_image, window_size=1024, 
 
 def main():
     model_path = './checkpoints/best0921.pth'
-    pre_image_path = './images/20210709_073742_79_2431_3B_Visual_clip.tif'
-    post_image_path = './images/20220709_072527_82_242b_3B_Visual_clip.tif'
-    mask_path = '' 
+
+    # # xbd
+    img_home_path = "C:/Users/xiao/peng/xbd/Dataset/Validation"
+    pre_image_path = img_home_path + "/Pre/Image512/"+ "midwest-flooding_00000325_pre_disaster.png"
+    post_image_path = img_home_path + "/Post/Image512/"+ "midwest-flooding_00000325_post_disaster.png"
+    mask_path = img_home_path + "/Post/Label512/"+ "midwest-flooding_00000325_post_disaster.png"
+
+    # #my dataset
+    # pre_image_path = './images/20210709_073742_79_2431_3B_Visual_clip.tif'
+    # post_image_path = './images/20220709_072527_82_242b_3B_Visual_clip.tif'
+    # mask_path = ''
+
     # mask_path = 'path/to/ground_truth_mask.tif'  # 如果有的话
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
