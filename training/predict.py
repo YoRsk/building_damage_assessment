@@ -4,11 +4,14 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from torchvision import transforms
 from model.my_models import SiameseUNetWithResnet50Encoder  # 导入您的模型
-from utils.data_loading import preprocess  # 导入您的预处理函数
 from utils.dice_score import multiclass_dice_coeff, dice_coeff
 from torchmetrics import F1Score, JaccardIndex, AUROC, Precision, Recall
 import torch.nn.functional as F
 import matplotlib.colors as mcolors
+import os
+import sys
+from pathlib import Path
+from tqdm import tqdm
 
 def load_model(model_path):
     model = SiameseUNetWithResnet50Encoder()
@@ -66,8 +69,11 @@ def visualize_prediction(image, mask, prediction):
     ax1.set_title('Original Image')
     ax1.axis('off')
     
-    ax2.imshow(mask, cmap=cmap, norm=norm)
-    ax2.set_title('Ground Truth')
+    if mask is not None:
+        ax2.imshow(mask, cmap=cmap, norm=norm)
+        ax2.set_title('Ground Truth')
+    else:
+        ax2.set_visible(False)  # 如果没有 mask，隐藏中间的子图
     ax2.axis('off')
     
     ax3.imshow(prediction, cmap=cmap, norm=norm)
@@ -104,12 +110,11 @@ def calculate_metrics(prediction, ground_truth):
     recall_score = Recall(task="multiclass", num_classes=5, average='macro')
     recall = recall_score(prediction_tensor, ground_truth_tensor)
     
-    auroc = AUROC(task="multiclass", num_classes=5)
-    # 为AUROC计算准备概率分布
-    pred_probs = F.softmax(torch.randn(1, 5, *prediction.shape), dim=1)  # 这里使用随机值，实际中应使用模型的原始输出
-    auc_roc = auroc(pred_probs, ground_truth_tensor)
+    # auroc = AUROC(task="multiclass", num_classes=5)
+    # pred_probs = F.one_hot(torch.from_numpy(prediction).long(), 5).float()
+    # auc_roc = auroc(pred_probs, ground_truth_tensor)
     
-    return dice.item(), f1.item(), iou.item(), precision.item(), recall.item(), auc_roc.item()
+    return dice.item(), f1.item(), iou.item(), precision.item(), recall.item()
 
 def predict_with_sliding_window(model, pre_image, post_image, window_size=1024, overlap=32, device='cuda'):
     """
@@ -136,25 +141,34 @@ def predict_with_sliding_window(model, pre_image, post_image, window_size=1024, 
     output = np.zeros((height, width), dtype=np.uint8)
     counts = np.zeros((height, width), dtype=np.uint8)
     
-    # 滑动窗口
-    for y in range(0, height - overlap, stride):
-        for x in range(0, width - overlap, stride):
-            # 确定当前窗口的范围
-            end_y = min(y + window_size, height)
-            end_x = min(x + window_size, width)
-            y1 = max(0, y)
-            x1 = max(0, x)
-            
-            # 裁剪图像
-            pre_window = pre_image.crop((x1, y1, end_x, end_y))
-            post_window = post_image.crop((x1, y1, end_x, end_y))
-            
-            # 预测当前窗口
-            pred = predict_image(model, pre_window, post_window, device)
-            
-            # 将预测结果写入输出数组
-            output[y1:end_y, x1:end_x] += pred
-            counts[y1:end_y, x1:end_x] += 1
+    # 计算总窗口数
+    y_steps = (height - overlap) // stride
+    x_steps = (width - overlap) // stride
+    total_steps = y_steps * x_steps
+    
+    # 使用tqdm创建进度条
+    with tqdm(total=total_steps, desc='Processing windows') as pbar:
+        for y in range(0, height - overlap, stride):
+            for x in range(0, width - overlap, stride):
+                # 确定当前窗口的范围
+                end_y = min(y + window_size, height)
+                end_x = min(x + window_size, width)
+                y1 = max(0, y)
+                x1 = max(0, x)
+                
+                # 裁剪图像
+                pre_window = pre_image.crop((x1, y1, end_x, end_y))
+                post_window = post_image.crop((x1, y1, end_x, end_y))
+                
+                # 预测当前窗口
+                pred = predict_image(model, pre_window, post_window, device)
+                
+                # 将预测结果写入输出数组
+                output[y1:end_y, x1:end_x] += pred
+                counts[y1:end_y, x1:end_x] += 1
+                
+                # 更新进度条
+                pbar.update(1)
     
     # 取平均值
     output = output / counts
@@ -170,7 +184,8 @@ def main():
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    model = load_model(model_path, device)
+    model = load_model(model_path)
+    model.to(device)
     
     pre_image = Image.open(pre_image_path)
     post_image = Image.open(post_image_path)
