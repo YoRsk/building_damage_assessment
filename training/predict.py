@@ -3,7 +3,7 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 from torchvision import transforms
-from model.my_models import SiameseUNetWithResnet50Encoder  # 导入您的模型
+from model.my_models import SiameseUNetWithResnet50Encoder, SiamUNetConCVgg19  # 导入您的模型
 from utils.dice_score import multiclass_dice_coeff, dice_coeff
 from torchmetrics import F1Score, JaccardIndex, AUROC, Precision, Recall
 import torch.nn.functional as F
@@ -14,7 +14,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 def load_model(model_path):
-    model = SiameseUNetWithResnet50Encoder()
+    model = SiamUNetConCVgg19()
     model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
     return model
@@ -68,6 +68,14 @@ def predict_image(model, pre_image, post_image, device):
     return output.argmax(dim=1).squeeze().cpu().numpy()
 
 def visualize_prediction(image, mask, prediction):
+    # 打印每个类别的像素数量和百分比
+    unique, counts = np.unique(prediction, return_counts=True)
+    total_pixels = prediction.size
+    print("\n类别统计:")
+    class_names = ['Unclassified', 'No Damage', 'Minor Damage', 'Major Damage', 'Destroyed']
+    for value, count in zip(unique, counts):
+        percentage = (count / total_pixels) * 100
+        print(f"{class_names[value]}: {count} pixels ({percentage:.2f}%)")
     # 定义颜色映射
     colors = ['black', 'blue', 'green', 'yellow', 'red']
     n_classes = 5
@@ -81,25 +89,34 @@ def visualize_prediction(image, mask, prediction):
     fig = plt.figure(figsize=(15, 5))
     gs = plt.GridSpec(1, 3, figure=fig, wspace=0.3)
     
+    # 设置全局显示参数
+    plt.rcParams['image.interpolation'] = 'nearest'
+    plt.rcParams['image.resample'] = False
+
     ax1 = fig.add_subplot(gs[0])
     ax2 = fig.add_subplot(gs[1])
     ax3 = fig.add_subplot(gs[2])
-    
+    # 显示原始图像
     ax1.imshow(image)
     ax1.set_title('Original Image')
     ax1.axis('off')
-    
+    # 显示Ground Truth（如果有）
     if mask is not None:
-        ax2.imshow(mask, cmap=cmap, norm=norm)
+        im2 = ax2.imshow(mask,
+                        cmap=cmap,
+                        norm=norm)
         ax2.set_title('Ground Truth')
     else:
         ax2.set_visible(False)  # 如果没有 mask，隐藏中间的子图
     ax2.axis('off')
-    
-    ax3.imshow(prediction, cmap=cmap, norm=norm)
+
+    # 显示预测结果
+    im3 = ax3.imshow(prediction,
+                    cmap=cmap,
+                    norm=norm)
     ax3.set_title('Prediction')
     ax3.axis('off')
-    
+
     # 添加颜色条
     cbar_ax = fig.add_axes([0.15, 0.05, 0.7, 0.02])  # [left, bottom, width, height]
     cbar = plt.colorbar(
@@ -108,9 +125,24 @@ def visualize_prediction(image, mask, prediction):
         orientation='horizontal'
     )
     cbar.set_ticks(bounds[:-1] + 0.5)
-    cbar.set_ticklabels(['Unclassified', 'No Damage', 'Minor Damage', 'Major Damage', 'Destroyed'])
-    
-    plt.show()
+    # 设置颜色条标签
+    cbar.set_ticklabels(['Unclassified', 'No Damage', 'Minor Damage',
+                        'Major Damage', 'Destroyed'])
+
+    # 确保像素级显示
+    for ax in [ax2, ax3]:
+        if ax.get_visible():
+            ax.set_aspect('equal', adjustable='box')
+
+    # 添加事件处理以确保缩放时保持设置
+    def on_draw(event):
+        for ax in [ax2, ax3]:
+            if ax.get_visible():
+                ax.images[0].set_interpolation('nearest')
+
+    fig.canvas.mpl_connect('draw_event', on_draw)
+
+    plt.show(block=True)
 
 def calculate_metrics(prediction, ground_truth):
     prediction_tensor = torch.from_numpy(prediction).unsqueeze(0)
@@ -208,18 +240,18 @@ def predict_with_sliding_window(model, pre_image, post_image, window_size=1024, 
     return output
 
 def main():
-    model_path = './checkpoints/best0921.pth'
+    model_path = './checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
 
     # # xbd
-    img_home_path = "C:/Users/xiao/peng/xbd/Dataset/Validation"
-    pre_image_path = img_home_path + "/Pre/Image512/"+ "midwest-flooding_00000325_pre_disaster.png"
-    post_image_path = img_home_path + "/Post/Image512/"+ "midwest-flooding_00000325_post_disaster.png"
-    mask_path = img_home_path + "/Post/Label512/"+ "midwest-flooding_00000325_post_disaster.png"
+    # img_home_path = "C:/Users/xiao/peng/xbd/Dataset/Validation"
+    # pre_image_path = img_home_path + "/Pre/Image512/"+ "midwest-flooding_00000325_pre_disaster.png"
+    # post_image_path = img_home_path + "/Post/Image512/"+ "midwest-flooding_00000325_post_disaster.png"
+    # mask_path = img_home_path + "/Post/Label512/"+ "midwest-flooding_00000325_post_disaster.png"
 
-    # #my dataset
-    # pre_image_path = './images/20210709_073742_79_2431_3B_Visual_clip.tif'
-    # post_image_path = './images/20220709_072527_82_242b_3B_Visual_clip.tif'
-    # mask_path = ''
+    #my dataset
+    pre_image_path = './images/20210709_073742_79_2431_3B_Visual_clip.tif'
+    post_image_path = './images/20220709_072527_82_242b_3B_Visual_clip.tif'
+    mask_path = ''
 
     # mask_path = 'path/to/ground_truth_mask.tif'  # 如果有的话
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
