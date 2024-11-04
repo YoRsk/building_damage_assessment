@@ -541,8 +541,8 @@ ampbool = True
 save_checkpoint = True
 traintype = 'both'
 gradclip = 1.0
-net = SiamUNetConCVgg19()
-# net = SiameseUNetWithResnet50Encoder()
+# net = SiamUNetConCVgg19()
+net = SiameseUNetWithResnet50Encoder()
 # net = ResNet50()
 model_parameters = filter(lambda p: p.requires_grad, net.parameters())
 params = sum([np.prod(p.size()) for p in model_parameters])
@@ -551,7 +551,7 @@ mem_bufs = sum([buf.nelement()*buf.element_size() for buf in net.buffers()])
 mem = mem_params + mem_bufs
 
 if __name__ == '__main__':
-    task = Task.init(project_name="damage-assessment", task_name="train SiamUNetConCVgg19 1103")
+    task = Task.init(project_name="damage-assessment", task_name="train SiameseUNetWithResnet50Encoder() 1104 CEL+FOCAL")
 
     # task_id_to_resume = "432ff2e399124e32977edbeb13c7e30a"  # 替换为您想恢复的任务 ID
 

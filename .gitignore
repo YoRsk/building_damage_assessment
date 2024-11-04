@@ -24,3 +24,7 @@ SiameseUNetWithResnet50Encoder.onnx
 process.log
 training/images/20210709_073742_79_2431_3B_Visual_clip.tif
 training/images/20220709_072527_82_242b_3B_Visual_clip.tif
+training/images/after_Olenyvka_prison_Donetsk.jpeg
+training/images/after_Zhovteneyvi.jpeg
+training/images/before_Olenyvka_prison_Donetsk.jpeg
+training/images/before_Zhovteneyvi.jpeg
