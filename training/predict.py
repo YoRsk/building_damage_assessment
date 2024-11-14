@@ -82,8 +82,6 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
     colors = ['black', 'blue', 'green', 'yellow', 'red']
     n_classes = 5
     cmap = mcolors.ListedColormap(colors[:n_classes])
-    
-    # 创建规范化对象
     bounds = np.arange(n_classes + 1)
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
@@ -134,26 +132,17 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
         # 显示原始图像
         ax3.imshow(image)
         # 叠加预测结果
-        overlay = ax3.imshow(prediction_colored)
+        ax3.imshow(prediction_colored)
         
-        # 添加颜色条
+        # 使用原始的 prediction 创建颜色条
+        dummy_im = ax3.imshow(prediction, cmap=cmap, norm=norm, visible=False)
         cbar_ax = fig.add_axes([0.15, 0.05, 0.7, 0.02])
-        cbar = plt.colorbar(
-            overlay,
-            cax=cbar_ax,
-            orientation='horizontal'
-        )
+        cbar = plt.colorbar(dummy_im, cax=cbar_ax, orientation='horizontal')
     else:
         # 原来的显示方式
         im3 = ax3.imshow(prediction, cmap=cmap, norm=norm)
-        
-        # 添加颜色条
         cbar_ax = fig.add_axes([0.15, 0.05, 0.7, 0.02])
-        cbar = plt.colorbar(
-            im3,
-            cax=cbar_ax,
-            orientation='horizontal'
-        )
+        cbar = plt.colorbar(im3, cax=cbar_ax, orientation='horizontal')
     
     ax3.set_title('Prediction')
     ax3.axis('off')
