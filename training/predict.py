@@ -119,11 +119,11 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
         
         # 设置颜色映射（RGBA格式）
         color_map = {
-            0: [0, 0, 0, 0],  # 未分类 - 完全透明
-            1: [0, 0, 1, 0.5],  # 蓝色半透明
-            2: [0, 1, 0, 0.5],  # 绿色半透明
-            3: [1, 1, 0, 0.5],  # 黄色半透明
-            4: [1, 0, 0, 0.5],  # 红色半透明
+            0: [0, 0, 0, 0],      # 未分类 - 完全透明
+            1: [0, 0, 1, 1],      # 蓝色不透明
+            2: [0, 1, 0, 1],      # 绿色不透明
+            3: [1, 1, 0, 1],      # 黄色不透明
+            4: [1, 0, 0, 1],      # 红色不透明
         }
         
         # 为每个类别设置颜色
@@ -134,7 +134,15 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
         # 显示原始图像
         ax3.imshow(image)
         # 叠加预测结果
-        ax3.imshow(prediction_colored)
+        overlay = ax3.imshow(prediction_colored)
+        
+        # 修改颜色条显示
+        cbar_ax = fig.add_axes([0.15, 0.05, 0.7, 0.02])
+        cbar = plt.colorbar(
+            overlay,
+            cax=cbar_ax,
+            orientation='horizontal'
+        )
     else:
         # 原来的显示方式
         im3 = ax3.imshow(prediction, cmap=cmap, norm=norm)
