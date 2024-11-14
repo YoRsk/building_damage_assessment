@@ -136,7 +136,7 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
         # 叠加预测结果
         overlay = ax3.imshow(prediction_colored)
         
-        # 修改颜色条显示
+        # 添加颜色条
         cbar_ax = fig.add_axes([0.15, 0.05, 0.7, 0.02])
         cbar = plt.colorbar(
             overlay,
@@ -146,19 +146,20 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
     else:
         # 原来的显示方式
         im3 = ax3.imshow(prediction, cmap=cmap, norm=norm)
+        
+        # 添加颜色条
+        cbar_ax = fig.add_axes([0.15, 0.05, 0.7, 0.02])
+        cbar = plt.colorbar(
+            im3,
+            cax=cbar_ax,
+            orientation='horizontal'
+        )
     
     ax3.set_title('Prediction')
     ax3.axis('off')
 
-    # 添加颜色条
-    cbar_ax = fig.add_axes([0.15, 0.05, 0.7, 0.02])  # [left, bottom, width, height]
-    cbar = plt.colorbar(
-        ax3.imshow(prediction, cmap=cmap, norm=norm),
-        cax=cbar_ax,
-        orientation='horizontal'
-    )
-    cbar.set_ticks(bounds[:-1] + 0.5)
     # 设置颜色条标签
+    cbar.set_ticks(bounds[:-1] + 0.5)
     cbar.set_ticklabels(['Unclassified', 'No Damage', 'Minor Damage',
                         'Major Damage', 'Destroyed'])
 
