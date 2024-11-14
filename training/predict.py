@@ -12,6 +12,7 @@ import os
 import sys
 from pathlib import Path
 from tqdm import tqdm
+import argparse  # 添加到文件开头
 
 def load_model(model_path):
     model = SiameseUNetWithResnet50Encoder()
@@ -68,7 +69,7 @@ def predict_image(model, pre_image, post_image, device):
     # argmax: get f(x)最大值
     return output.argmax(dim=1).squeeze().cpu().numpy()
 
-def visualize_prediction(image, mask, prediction):
+def visualize_prediction(image, mask, prediction, show_original_unclassified=False):
     # 打印每个类别的像素数量和百分比
     unique, counts = np.unique(prediction, return_counts=True)
     total_pixels = prediction.size
@@ -111,10 +112,33 @@ def visualize_prediction(image, mask, prediction):
         ax2.set_visible(False)  # 如果没有 mask，隐藏中间的子图
     ax2.axis('off')
 
-    # 显示预测结果
-    im3 = ax3.imshow(prediction,
-                    cmap=cmap,
-                    norm=norm)
+    # 修改显示预测结果的部分
+    if show_original_unclassified:
+        # 创建一个带有 alpha 通道的预测图像
+        prediction_colored = np.zeros((*prediction.shape, 4))
+        
+        # 设置颜色映射（RGBA格式）
+        color_map = {
+            0: [0, 0, 0, 0],  # 未分类 - 完全透明
+            1: [0, 0, 1, 0.5],  # 蓝色半透明
+            2: [0, 1, 0, 0.5],  # 绿色半透明
+            3: [1, 1, 0, 0.5],  # 黄色半透明
+            4: [1, 0, 0, 0.5],  # 红色半透明
+        }
+        
+        # 为每个类别设置颜色
+        for class_idx, color in color_map.items():
+            mask = prediction == class_idx
+            prediction_colored[mask] = color
+            
+        # 显示原始图像
+        ax3.imshow(image)
+        # 叠加预测结果
+        ax3.imshow(prediction_colored)
+    else:
+        # 原来的显示方式
+        im3 = ax3.imshow(prediction, cmap=cmap, norm=norm)
+    
     ax3.set_title('Prediction')
     ax3.axis('off')
 
@@ -241,6 +265,12 @@ def predict_with_sliding_window(model, pre_image, post_image, window_size=1024, 
     return output
 
 def main():
+    # 添加命令行参数解析
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--show-original', action='store_true',
+                      help='Show original image for unclassified areas')
+    args = parser.parse_args()
+    
     # model_path = './checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch49.pth'
     # model_path = './checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch52.pth'
     model_path = './checkpoints/best0921.pth'
@@ -282,7 +312,7 @@ def main():
     
     if mask is not None:
         mask_np = np.array(mask)
-        visualize_prediction(np.array(post_image), mask_np, prediction)
+        visualize_prediction(np.array(post_image), mask_np, prediction, args.show_original)
         dice, f1, iou, precision, recall = calculate_metrics(prediction, mask_np)
         print(f'Dice Score: {dice:.4f}')
         print(f'F1 Score: {f1:.4f}')
@@ -290,7 +320,7 @@ def main():
         print(f'Precision: {precision:.4f}')
         print(f'Recall: {recall:.4f}')
     else:
-        visualize_prediction(np.array(post_image), None, prediction)
+        visualize_prediction(np.array(post_image), None, prediction, args.show_original)
 
 if __name__ == '__main__':
     main()
