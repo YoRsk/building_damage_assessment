@@ -15,8 +15,8 @@ from tqdm import tqdm
 import argparse  # 添加到文件开头
 
 def load_model(model_path):
-    model = SiameseUNetWithResnet50Encoder()
-    # model = SiamUNetConCVgg19()
+    # model = SiameseUNetWithResnet50Encoder()
+    model = SiamUNetConCVgg19()
     model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
     return model
@@ -270,23 +270,29 @@ def main():
     args = parser.parse_args()
     
     # model_path = './checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch49.pth'
-    # model_path = './checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch52.pth'
-    model_path = './checkpoints/best0921.pth'
+    model_path = './checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch52.pth'
+    # model_path = './checkpoints/best0921.pth'
     # # xbd
     # img_home_path = "C:/Users/xiao/peng/xbd/Dataset/Validation"
     # pre_image_path = img_home_path + "/Pre/Image512/"+ "hurricane-michael_00000400_pre_disaster.png"
     # post_image_path = img_home_path + "/Post/Image512/"+ "hurricane-michael_00000400_post_disaster.png"
     # mask_path = img_home_path + "/Post/Label512/"+ "hurricane-michael_00000400_post_disaster.png"
 
-    # #my dataset
-    # pre_image_path = './images/20210709_073742_79_2431_3B_Visual_clip.tif'
-    # post_image_path = './images/20220709_072527_82_242b_3B_Visual_clip.tif'
-    # mask_path = ''
+    #my dataset
+    #pre
+    #./images/20210709_073742_79_2431_3B_Visual_clip.tif
+    #post
+    #./images/20220713_075021_72_222f_3B_Visual_clip.tif
+    #./images/20220709_072527_82_242b_3B_Visual_clip.tif
+    pre_image_path = './images/20210709_073742_79_2431_3B_Visual_clip.tif'
+    post_image_path = './images/20220713_075021_72_222f_3B_Visual_clip.tif'
 
-    #my dataset2
-    pre_image_path = './images/before_Zhovteneyvi.jpeg'
-    post_image_path = './images/after_Zhovteneyvi.jpeg'
     mask_path = ''
+
+    # #my dataset2
+    # pre_image_path = './images/before_Zhovteneyvi.jpeg'
+    # post_image_path = './images/after_Zhovteneyvi.jpeg'
+    # mask_path = ''
 
     # mask_path = 'path/to/ground_truth_mask.tif'  # 如果有的话
 
