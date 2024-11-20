@@ -5,7 +5,7 @@ import torch.nn as nn
 import torchvision
 import torchvision.models as models
 from torchvision.models import ResNet50_Weights
-from torchvision.models import vgg13_bn, vgg16_bn, vgg16, vgg19, vgg19_bn
+from torchvision.models import vgg13_bn, vgg16_bn, vgg16, vgg19, vgg19_bn, VGG19_Weights
 resnet = models.resnet50(weights=ResNet50_Weights.DEFAULT)
 
 # resnet = torchvision.models.resnet.resnet50(pretrained=True)
@@ -98,7 +98,7 @@ class SiamUNetConCVgg19(nn.Module):
         super().__init__()
         self.bn = False
         self.up_sample_mode = 'conv_transpose'
-        self.encoder = vgg19(pretrained=True).features
+        self.encoder = vgg19(weights=VGG19_Weights.DEFAULT).features
         self.block1 = nn.Sequential(*self.encoder[:4])
         self.block2 = nn.Sequential(*self.encoder[4:9])
         self.block3 = nn.Sequential(*self.encoder[9:18])
