@@ -56,43 +56,66 @@ class BuildingAwarePredictor:
         }
         
     def process_with_building_attention(self, prediction, building_mask, window_size=64):
-        """对小型建筑物进行特殊处理"""
+        """
+        对小型建筑物进行特殊处理，考虑周围建筑物的损伤情况来调整预测结果
+        
+        Args:
+            prediction (np.ndarray): 模型的预测结果，取值范围[0-4]
+                0: 未分类
+                1: 无损伤
+                2: 轻微损伤
+                3: 重度损伤
+                4: 摧毁
+            building_mask (np.ndarray): 建筑物掩码，1表示建筑物区域，0表示非建筑物区域
+            window_size (int): 查看周围区域的窗口大小
+            
+        Returns:
+            np.ndarray: 增强后的预测结果
+        """
         enhanced_pred = prediction.copy()
-        building_labels = measure.label(building_mask)
+        building_labels = measure.label(building_mask)  # 为每个独立的建筑物标注唯一ID
         
         for building_id in range(1, building_labels.max() + 1):
+            # 获取当前建筑物的掩码
             building_mask = building_labels == building_id
             building_size = np.sum(building_mask)
             
+            # 只处理小型建筑物
             if building_size < self.small_building_threshold:
-                # 获取建筑物的边界框
+                # 获取建筑物的边界框坐标
                 props = measure.regionprops(building_mask.astype(int))
-                bbox = props[0].bbox
+                bbox = props[0].bbox  # (min_row, min_col, max_row, max_col)
                 
-                # 扩展感受野
-                y1, x1, y2, x2 = bbox
-                pad = window_size // 2
-                y1_ext = max(0, y1 - pad)
-                x1_ext = max(0, x1 - pad)
-                y2_ext = min(prediction.shape[0], y2 + pad)
-                x2_ext = min(prediction.shape[1], x2 + pad)
-                
-                # 分析周围建筑物的损伤情况
-                context_region = prediction[y1_ext:y2_ext, x1_ext:x2_ext]
-                # 只考虑建筑物区域的损伤等级（非0的部分）
-                context_damage = context_region[context_region > 0]
-                
-                if len(context_damage) > 0:
-                    # 获取周围建筑物的主要损伤等级
-                    damage_levels, counts = np.unique(context_damage, return_counts=True)
-                    main_damage = damage_levels[counts.argmax()]
+                # 先检查当前建筑物的预测情况
+                current_pred = prediction[building_mask]
+                # 如果当前预测为未分类(0)或无损伤(1)
+                if np.all((current_pred == 0) | (current_pred == 1)):
+                    # 扩展感受野，查看建筑物周围的区域
+                    y1, x1, y2, x2 = bbox
+                    pad = window_size // 2  # 向外扩展的像素数
+                    y1_ext = max(0, y1 - pad)
+                    x1_ext = max(0, x1 - pad)
+                    y2_ext = min(prediction.shape[0], y2 + pad)
+                    x2_ext = min(prediction.shape[1], x2 + pad)
                     
-                    # 当前建筑物的预测
-                    current_pred = prediction[building_mask]
-                    if np.all(current_pred == 0):  # 如果当前预测为未分类
-                        # 根据周围损伤情况设置损伤等级
-                        enhanced_pred[building_mask] = max(1, int(main_damage))
+                    # 获取扩展区域内的预测结果
+                    context_region = prediction[y1_ext:y2_ext, x1_ext:x2_ext]
+                    # 获取周围有损伤的建筑物预测（值大于1的部分）
+                    damage_context = context_region[context_region > 1]
+                    
+                    if len(damage_context) > 0:
+                        # 计算周围区域的损伤比例
+                        damage_ratio = len(damage_context) / context_region.size
                         
+                        if damage_ratio > 0.2:  # 如果周围有显著损伤
+                            # 统计损伤等级并获取最常见的损伤等级
+                            damage_levels, counts = np.unique(damage_context, return_counts=True)
+                            main_damage = damage_levels[counts.argmax()]
+                            
+                            # 如果周围主要损伤等级大于当前预测，更新预测结果
+                            if main_damage > np.max(current_pred):
+                                enhanced_pred[building_mask] = int(main_damage)
+        
         return enhanced_pred
 
     def post_process(self, prediction, building_mask):
