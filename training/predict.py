@@ -13,28 +13,132 @@ import sys
 from pathlib import Path
 from tqdm import tqdm
 import argparse  # 添加到文件开头
+# 在文件开头添加必要的导入
+from skimage import measure
+import torch.nn.functional as F
+from scipy import ndimage
 
+# 在文件开头添加配置
+CONFIG = {
+    'SMALL_BUILDING_THRESHOLD': 100,  # 小型建筑物面积阈值
+    'WINDOW_SIZE': 1024,  # 滑动窗口大小
+    'OVERLAP': 32,  # 重叠区域大小
+    'CONTEXT_WINDOW': 64,  # 上下文窗口大小
+    'DAMAGE_THRESHOLD': 0.3,  # 损伤判断阈值
+}
 def load_model(model_path):
     # model = SiameseUNetWithResnet50Encoder()
     model = SiamUNetConCVgg19()
     model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
     return model
-
-def preprocess_image(image, size=None):
+class BuildingAwarePredictor:
     """
-    预处理图像：调整大小，转换为RGB，标准化
+    用于处理建筑物感知的预测处理器
+    
+    属性:
+        model: 训练好的模型
+        device: 计算设备
+        small_building_threshold: 小型建筑物面积阈值
+        damage_classes: 损伤等级字典
+    """
+    def __init__(self, model, device='cuda'):
+        self.model = model
+        self.device = device
+        self.small_building_threshold = 100  # 小型建筑物面积阈值
+        self.damage_classes = {
+            "un-classified": 0,  # 非建筑部分
+            "no-damage": 1,
+            "minor-damage": 2,
+            "major-damage": 3,
+            "destroyed": 4
+        }
+        
+    def process_with_building_attention(self, prediction, building_mask, window_size=64):
+        """对小型建筑物进行特殊处理"""
+        enhanced_pred = prediction.copy()
+        building_labels = measure.label(building_mask)
+        
+        for building_id in range(1, building_labels.max() + 1):
+            building_mask = building_labels == building_id
+            building_size = np.sum(building_mask)
+            
+            if building_size < self.small_building_threshold:
+                # 获取建筑物的边界框
+                props = measure.regionprops(building_mask.astype(int))
+                bbox = props[0].bbox
+                
+                # 扩展感受野
+                y1, x1, y2, x2 = bbox
+                pad = window_size // 2
+                y1_ext = max(0, y1 - pad)
+                x1_ext = max(0, x1 - pad)
+                y2_ext = min(prediction.shape[0], y2 + pad)
+                x2_ext = min(prediction.shape[1], x2 + pad)
+                
+                # 分析周围建筑物的损伤情况
+                context_region = prediction[y1_ext:y2_ext, x1_ext:x2_ext]
+                # 只考虑建筑物区域的损伤等级（非0的部分）
+                context_damage = context_region[context_region > 0]
+                
+                if len(context_damage) > 0:
+                    # 获取周围建筑物的主要损伤等级
+                    damage_levels, counts = np.unique(context_damage, return_counts=True)
+                    main_damage = damage_levels[counts.argmax()]
+                    
+                    # 当前建筑物的预测
+                    current_pred = prediction[building_mask]
+                    if np.all(current_pred == 0):  # 如果当前预测为未分类
+                        # 根据周围损伤情况设置损伤等级
+                        enhanced_pred[building_mask] = max(1, int(main_damage))
+                        
+        return enhanced_pred
 
+    def post_process(self, prediction, building_mask):
+        """后处理优化"""
+        # 验证输入
+        if prediction.shape != building_mask.shape:
+            raise ValueError("Prediction and building_mask must have the same shape")
+        processed_pred = prediction.copy()
+        
+        # 确保非建筑区域为0
+        processed_pred[building_mask == 0] = self.damage_classes["un-classified"]
+        
+        # 对建筑物区域进行处理
+        building_labels = measure.label(building_mask)
+        
+        for building_id in range(1, building_labels.max() + 1):
+            building_mask = building_labels == building_id
+            building_size = np.sum(building_mask)
+            
+            # 获取建筑物区域的预测
+            building_pred = prediction[building_mask]
+            
+            if building_size < self.small_building_threshold:
+                # 对小型建筑物，使用主要损伤等级
+                damage_levels = building_pred[building_pred > 0]  # 只考虑非0值
+                if len(damage_levels) > 0:
+                    main_damage = np.bincount(damage_levels.astype(int)).argmax()
+                    processed_pred[building_mask] = main_damage
+                else:
+                    # 如果没有检测到损伤，默认为无损伤
+                    processed_pred[building_mask] = self.damage_classes["no-damage"]
+        # 验证输出
+        assert processed_pred.min() >= 0 and processed_pred.max() <= 4, "Invalid prediction values"
+        return processed_pred
+    
+def preprocess_image(image, size=None, is_mask=False):
+    """
+    预处理图像和mask
+    
     Args:
         image: PIL Image 格式的图像
         size: 目标大小，如果为None则调整为32的倍数
+        is_mask: 是否是建筑物mask（二值，0非建筑，1建筑）
     """
-    # 确保是RGB模式
-    if image.mode == 'RGBA':
-        # 转换RGBA为RGB，丢弃alpha通道
+    # 确保正确的图像模式
+    if not is_mask and image.mode != 'RGB':
         image = image.convert('RGB')
-    elif image.mode != 'RGB':
-        raise ValueError(f"Unsupported image mode: {image.mode}")
     
     if size is None:
         # 确保宽高是32的倍数
@@ -43,32 +147,134 @@ def preprocess_image(image, size=None):
         h = ((h // 32) + (1 if h % 32 != 0 else 0)) * 32
         size = (w, h)
     
-    transform = transforms.Compose([
-        transforms.Resize(size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                           std=[0.229, 0.224, 0.225])
-    ])
-    return transform(image)
+    if is_mask:
+        # mask只需要调整大小，保持二值特性
+        transform = transforms.Compose([
+            transforms.Resize(size, interpolation=transforms.InterpolationMode.NEAREST),
+            transforms.ToTensor()
+        ])
+        # mask直接返回二值tensor
+        return transform(image)
+    else:
+        # 普通图像需要标准化
+        transform = transforms.Compose([
+            transforms.Resize(size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                              std=[0.229, 0.224, 0.225])
+        ])
+        return transform(image)
 
-def predict_image(model, pre_image, post_image, device):
+def predict_image(model, pre_image, post_image, building_mask=None, device='cuda'):
+    """
+    预测函数
+    Args:
+        model: 模型
+        pre_image: 灾前图像
+        post_image: 灾后图像
+        building_mask: 建筑物区域mask（二值）
+        device: 设备
+    """
     model.to(device)
-    model.eval()      # 确保模型在评估模式
+    model.eval()
     
     # 预处理
-    pre_image = preprocess_image(pre_image)
-    post_image = preprocess_image(post_image)
+    pre_image = preprocess_image(pre_image, is_mask=False)
+    post_image = preprocess_image(post_image, is_mask=False)
+    
+    # 处理建筑物mask
+    if building_mask is not None:
+        building_mask = preprocess_image(building_mask, size=pre_image.shape[-2:], is_mask=True)
     
     # 添加batch维度并移到设备
     pre_image = pre_image.unsqueeze(0).to(device)
     post_image = post_image.unsqueeze(0).to(device)
+    if building_mask is not None:
+        building_mask = building_mask.unsqueeze(0).to(device)
     
     with torch.no_grad():
         output = model(pre_image, post_image)
-    #.squeeze(): 由于输入只有一张图片，batch_size 为 1，这步操作去除了 batch 维度。结果形状变为 (height, width)。
-    # argmax: get f(x)最大值
-    return output.argmax(dim=1).squeeze().cpu().numpy()
-
+        pred_prob = F.softmax(output, dim=1)
+        
+        if building_mask is not None:
+            # 将mask调整到输出大小
+            building_mask = F.interpolate(building_mask, size=output.shape[2:], mode='nearest')
+            
+        # 获取初始预测
+        initial_pred = pred_prob.argmax(dim=1).squeeze().cpu().numpy()
+        
+        if building_mask is not None:
+            building_mask_np = building_mask.squeeze().cpu().numpy()
+            # 创建预测器实例
+            predictor = BuildingAwarePredictor(model, device)
+            # 应用建筑物感知的增强
+            enhanced_pred = predictor.process_with_building_attention(
+                initial_pred, building_mask_np)
+            # 后处理优化
+            final_pred = predictor.post_process(enhanced_pred, building_mask_np)
+            return final_pred
+        
+        return initial_pred
+    
+def predict_with_sliding_window(model, pre_image, post_image, building_mask=None, 
+                              window_size=CONFIG['WINDOW_SIZE'], 
+                              overlap=CONFIG['OVERLAP'], 
+                              device='cuda'):
+    """滑动窗口预测"""
+    model.to(device)
+    model.eval()
+    
+    width, height = pre_image.size
+    stride = window_size - overlap
+    # 应该使用float32
+    output = np.zeros((height, width), dtype=np.float32)
+    counts = np.zeros((height, width), dtype=np.float32)    
+    # 每处理完一个窗口就清理一次GPU缓存
+    with torch.cuda.device(device):
+        torch.cuda.empty_cache()
+    # 处理建筑物mask
+    if building_mask is not None:
+        building_mask = building_mask.resize((width, height), Image.NEAREST)
+        building_mask_np = np.array(building_mask)
+    
+    y_steps = (height - overlap) // stride
+    x_steps = (width - overlap) // stride
+    total_steps = y_steps * x_steps
+    
+    predictor = BuildingAwarePredictor(model, device) if building_mask is not None else None
+    
+    with tqdm(total=total_steps, desc='Processing windows') as pbar:
+        for y in range(0, height - overlap, stride):
+            for x in range(0, width - overlap, stride):
+                end_y = min(y + window_size, height)
+                end_x = min(x + window_size, width)
+                y1, x1 = max(0, y), max(0, x)
+                
+                # 裁剪图像和mask
+                pre_window = pre_image.crop((x1, y1, end_x, end_y))
+                post_window = post_image.crop((x1, y1, end_x, end_y))
+                if building_mask is not None:
+                    mask_window = Image.fromarray(building_mask_np[y1:end_y, x1:end_x])
+                else:
+                    mask_window = None
+                
+                # 预测当前窗口
+                pred = predict_image(model, pre_window, post_window, 
+                                  mask_window, device)
+                
+                # 累加预测结果
+                output[y1:end_y, x1:end_x] += pred
+                counts[y1:end_y, x1:end_x] += 1
+                pbar.update(1)
+    
+    # 取平均
+    output = np.round(output / counts).astype(np.uint8)
+    
+    # 如果有建筑物mask，进行最终的后处理
+    if building_mask is not None:
+        output = predictor.post_process(output, building_mask_np)
+    
+    return output
 def visualize_prediction(image, mask, prediction, show_original_unclassified=False):
     # 打印每个类别的像素数量和百分比
     unique, counts = np.unique(prediction, return_counts=True)
@@ -195,78 +401,14 @@ def calculate_metrics(prediction, ground_truth):
     
     return dice.item(), f1.item(), iou.item(), precision.item(), recall.item()
 
-def predict_with_sliding_window(model, pre_image, post_image, window_size=1024, overlap=32, device='cuda'):
-    """
-    使用滑动窗口方式预测大图像
-    
-    Args:
-        model: 模型
-        pre_image: PIL Image 格式的灾前图像
-        post_image: PIL Image 格式的灾后图像
-        window_size: 窗口大小
-        overlap: 重叠区域大小
-        device: 设备
-    """
-    model.to(device)
-    model.eval()
-    
-    # 获取图像尺寸
-    width, height = pre_image.size
-    
-    # 计算步长
-    stride = window_size - overlap
-    
-    # 直接使用 float32
-    output = np.zeros((height, width), dtype=np.float32)
-    counts = np.zeros((height, width), dtype=np.float32)
-    
-    # 计算总窗口数
-    y_steps = (height - overlap) // stride
-    x_steps = (width - overlap) // stride
-    total_steps = y_steps * x_steps
-    
-    with tqdm(total=total_steps, desc='Processing windows') as pbar:
-        for y in range(0, height - overlap, stride):
-            for x in range(0, width - overlap, stride):
-                # 确定当前窗口的范围
-                end_y = min(y + window_size, height)
-                end_x = min(x + window_size, width)
-                y1 = max(0, y)
-                x1 = max(0, x)
-                
-                # 获取当前窗口的实际大小
-                current_height = end_y - y1
-                current_width = end_x - x1
-                
-                # 裁剪图像
-                pre_window = pre_image.crop((x1, y1, end_x, end_y))
-                post_window = post_image.crop((x1, y1, end_x, end_y))
-                
-                # 预测当前窗口，并指定目标大小
-                pred = predict_image(model, pre_window, post_window, device)
-                
-                # 如果预测结果大小不匹配，需要调整大小
-                if pred.shape != (current_height, current_width):
-                    pred = transforms.Resize((current_height, current_width))(
-                        torch.from_numpy(pred).unsqueeze(0)
-                    ).squeeze(0).numpy()
-                
-                # 累加预测结果
-                output[y1:end_y, x1:end_x] += pred
-                counts[y1:end_y, x1:end_x] += 1
-                
-                pbar.update(1)
-    
-    # 取平均并四舍五入
-    output = np.round(output / counts).astype(np.uint8)
-    
-    return output
-
 def main():
-    # 添加命令行参数解析
     parser = argparse.ArgumentParser()
     parser.add_argument('--show-original', action='store_true',
                       help='Show original image for unclassified areas')
+    parser.add_argument('--building-mask', type=str, default='',
+                      help='Path to the building mask file (binary mask for detection)')
+    parser.add_argument('--ground-truth-mask', type=str, default='',
+                      help='Path to the ground truth mask file (for evaluation)')
     args = parser.parse_args()
     
     # model_path = './checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch49.pth'
@@ -303,21 +445,38 @@ def main():
     
     pre_image = Image.open(pre_image_path)
     post_image = Image.open(post_image_path)
-    mask = Image.open(mask_path) if mask_path else None
+    building_mask = None
+    if args.building_mask:
+        try:
+            building_mask = Image.open(args.building_mask)
+            print("Successfully loaded building mask")
+        except Exception as e:
+            print(f"Error loading building mask: {e}")
+            building_mask = None
     
-    # 对于大图像使用滑动窗口
+    ground_truth_mask = None
+    if args.ground_truth_mask:
+        try:
+            ground_truth_mask = Image.open(args.ground_truth_mask)
+            print("Successfully loaded ground truth mask")
+        except Exception as e:
+            print(f"Error loading ground truth mask: {e}")
+            ground_truth_mask = None
+    # 预测
     if pre_image.size[0] > 1024 or pre_image.size[1] > 1024:
         prediction = predict_with_sliding_window(
-            model, pre_image, post_image, 
+            model, pre_image, post_image, building_mask,
             window_size=1024, overlap=32, device=device
         )
     else:
-        prediction = predict_image(model, pre_image, post_image, device)
+        prediction = predict_image(model, pre_image, post_image, 
+                                 building_mask, device)
     
-    if mask is not None:
-        mask_np = np.array(mask)
-        visualize_prediction(np.array(post_image), mask_np, prediction, args.show_original)
-        dice, f1, iou, precision, recall = calculate_metrics(prediction, mask_np)
+    # 评估
+    if ground_truth_mask is not None:
+        ground_truth_np = np.array(ground_truth_mask)
+        visualize_prediction(np.array(post_image), ground_truth_np, prediction, args.show_original)
+        dice, f1, iou, precision, recall = calculate_metrics(prediction, ground_truth_np)
         print(f'Dice Score: {dice:.4f}')
         print(f'F1 Score: {f1:.4f}')
         print(f'IoU: {iou:.4f}')
