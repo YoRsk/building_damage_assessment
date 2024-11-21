@@ -34,123 +34,143 @@ def load_model(model_path):
     model.eval()
     return model
 class BuildingAwarePredictor:
-    """
-    用于处理建筑物感知的预测处理器
-    
-    属性:
-        model: 训练好的模型
-        device: 计算设备
-        small_building_threshold: 小型建筑物面积阈值
-        damage_classes: 损伤等级字典
-    """
     def __init__(self, model, device='cuda'):
         self.model = model
         self.device = device
-        self.small_building_threshold = 100  # 小型建筑物面积阈值
+        self.small_building_threshold = 400  # 小型建筑物面积阈值
+        self.cluster_threshold = 1200  # 建筑物集群阈值
         self.damage_classes = {
-            "un-classified": 0,  # 非建筑部分
+            "un-classified": 0,
             "no-damage": 1,
             "minor-damage": 2,
             "major-damage": 3,
             "destroyed": 4
         }
+
+    def analyze_building_cluster(self, prediction, building_mask):
+        """
+        分析建筑物集群，处理扎堆在一起的小型建筑物
+        """
+        # 确保输入数组类型一致
+        prediction = prediction.astype(np.uint8)
+        building_mask = building_mask.astype(bool)
         
+        # 使用形态学操作识别建筑物集群
+        struct = ndimage.generate_binary_structure(2, 2)
+        dilated = ndimage.binary_dilation(building_mask, struct, iterations=3)
+        clusters = measure.label(dilated)
+        
+        enhanced_pred = prediction.copy()
+        
+        for cluster_id in range(1, clusters.max() + 1):
+            # 转换为布尔类型进行掩码操作
+            cluster_region = (clusters == cluster_id)
+            # 获取该集群中的所有建筑物
+            buildings_in_cluster = building_mask & cluster_region  # 现在两个数组都是布尔类型
+            cluster_size = np.sum(buildings_in_cluster)
+            
+            # 如果是较大的建筑物集群
+            if cluster_size > self.cluster_threshold:
+                # 分析集群内的损伤模式
+                cluster_predictions = prediction[cluster_region]
+                damage_predictions = cluster_predictions[cluster_predictions > 1]
+                
+                if len(damage_predictions) > 0:
+                    # 统计集群内的主要损伤等级
+                    damage_levels, counts = np.unique(damage_predictions, return_counts=True)
+                    dominant_damage = damage_levels[counts.argmax()]
+                    damage_ratio = len(damage_predictions) / len(cluster_predictions)
+                    
+                    # 如果集群内有显著损伤，调整未分类或未损坏的建筑物
+                    if damage_ratio > 0.2:  # 可调整的阈值
+                        # 确保类型一致性
+                        cluster_mask = building_mask & cluster_region
+                        undamaged_mask = cluster_mask & (prediction <= 1)
+                        if np.any(undamaged_mask):
+                            # 根据周围损伤程度调整预测
+                            enhanced_pred[undamaged_mask] = dominant_damage
+        
+        return enhanced_pred
     def process_with_building_attention(self, prediction, building_mask, window_size=64):
         """
-        对小型建筑物进行特殊处理，考虑周围建筑物的损伤情况来调整预测结果
-        
-        Args:
-            prediction (np.ndarray): 模型的预测结果，取值范围[0-4]
-                0: 未分类
-                1: 无损伤
-                2: 轻微损伤
-                3: 重度损伤
-                4: 摧毁
-            building_mask (np.ndarray): 建筑物掩码，1表示建筑物区域，0表示非建筑物区域
-            window_size (int): 查看周围区域的窗口大小
-            
-        Returns:
-            np.ndarray: 增强后的预测结果
+        优化的建筑物注意力处理，特别关注小型建筑物集群
         """
         enhanced_pred = prediction.copy()
-        building_labels = measure.label(building_mask)  # 为每个独立的建筑物标注唯一ID
+        building_labels = measure.label(building_mask)
         
+        # 首先处理建筑物集群
+        enhanced_pred = self.analyze_building_cluster(enhanced_pred, building_mask)
+        
+        # 然后处理单个建筑物
         for building_id in range(1, building_labels.max() + 1):
-            # 获取当前建筑物的掩码
-            building_mask = building_labels == building_id
-            building_size = np.sum(building_mask)
+            current_mask = building_labels == building_id
+            building_size = np.sum(current_mask)
             
-            # 只处理小型建筑物
             if building_size < self.small_building_threshold:
-                # 获取建筑物的边界框坐标
-                props = measure.regionprops(building_mask.astype(int))
-                bbox = props[0].bbox  # (min_row, min_col, max_row, max_col)
+                # 获取建筑物边界框
+                props = measure.regionprops(current_mask.astype(int))
+                if not props:
+                    continue
+                    
+                bbox = props[0].bbox
+                y1, x1, y2, x2 = bbox
                 
-                # 先检查当前建筑物的预测情况
-                current_pred = prediction[building_mask]
-                # 如果当前预测为未分类(0)或无损伤(1)
-                if np.all((current_pred == 0) | (current_pred == 1)):
-                    # 扩展感受野，查看建筑物周围的区域
-                    y1, x1, y2, x2 = bbox
-                    pad = window_size // 2  # 向外扩展的像素数
-                    y1_ext = max(0, y1 - pad)
-                    x1_ext = max(0, x1 - pad)
-                    y2_ext = min(prediction.shape[0], y2 + pad)
-                    x2_ext = min(prediction.shape[1], x2 + pad)
-                    
-                    # 获取扩展区域内的预测结果
-                    context_region = prediction[y1_ext:y2_ext, x1_ext:x2_ext]
-                    # 获取周围有损伤的建筑物预测（值大于1的部分）
-                    damage_context = context_region[context_region > 1]
-                    
-                    if len(damage_context) > 0:
-                        # 计算周围区域的损伤比例
-                        damage_ratio = len(damage_context) / context_region.size
+                # 扩展分析窗口
+                pad = window_size // 2
+                y1_ext = max(0, y1 - pad)
+                x1_ext = max(0, x1 - pad)
+                y2_ext = min(prediction.shape[0], y2 + pad)
+                x2_ext = min(prediction.shape[1], x2 + pad)
+                
+                # 分析周围区域
+                context_region = prediction[y1_ext:y2_ext, x1_ext:x2_ext]
+                context_buildings = building_mask[y1_ext:y2_ext, x1_ext:x2_ext]
+                
+                # 只考虑建筑物区域的预测
+                valid_predictions = context_region[context_buildings > 0]
+                damage_predictions = valid_predictions[valid_predictions > 1]
+                
+                if len(damage_predictions) > 0:
+                    damage_ratio = len(damage_predictions) / len(valid_predictions)
+                    if damage_ratio > 0.15:  # 降低阈值以提高敏感度
+                        # 获取周围主要损伤等级
+                        damage_levels, counts = np.unique(damage_predictions, return_counts=True)
+                        main_damage = damage_levels[counts.argmax()]
+                        current_pred = prediction[current_mask]
                         
-                        if damage_ratio > 0.2:  # 如果周围有显著损伤
-                            # 统计损伤等级并获取最常见的损伤等级
-                            damage_levels, counts = np.unique(damage_context, return_counts=True)
-                            main_damage = damage_levels[counts.argmax()]
-                            
-                            # 如果周围主要损伤等级大于当前预测，更新预测结果
-                            if main_damage > np.max(current_pred):
-                                enhanced_pred[building_mask] = int(main_damage)
+                        # 如果当前预测为未分类或未损坏，且周围有明显损伤，则更新预测
+                        if np.all(current_pred <= 1):
+                            enhanced_pred[current_mask] = main_damage
         
         return enhanced_pred
 
     def post_process(self, prediction, building_mask):
-        """后处理优化"""
-        # 验证输入
+        """
+        改进的后处理流程
+        """
         if prediction.shape != building_mask.shape:
             raise ValueError("Prediction and building_mask must have the same shape")
-        processed_pred = prediction.copy()
         
-        # 确保非建筑区域为0
+        processed_pred = prediction.copy()
         processed_pred[building_mask == 0] = self.damage_classes["un-classified"]
         
-        # 对建筑物区域进行处理
-        building_labels = measure.label(building_mask)
+        # 先处理建筑物集群
+        processed_pred = self.analyze_building_cluster(processed_pred, building_mask)
         
-        for building_id in range(1, building_labels.max() + 1):
-            building_mask = building_labels == building_id
-            building_size = np.sum(building_mask)
-            
-            # 获取建筑物区域的预测
-            building_pred = prediction[building_mask]
-            
-            if building_size < self.small_building_threshold:
-                # 对小型建筑物，使用主要损伤等级
-                damage_levels = building_pred[building_pred > 0]  # 只考虑非0值
-                if len(damage_levels) > 0:
-                    main_damage = np.bincount(damage_levels.astype(int)).argmax()
-                    processed_pred[building_mask] = main_damage
-                else:
-                    # 如果没有检测到损伤，默认为无损伤
-                    processed_pred[building_mask] = self.damage_classes["no-damage"]
-        # 验证输出
-        assert processed_pred.min() >= 0 and processed_pred.max() <= 4, "Invalid prediction values"
+        # 再处理个体建筑物
+        processed_pred = self.process_with_building_attention(processed_pred, building_mask)
+        
+        # 最后进行平滑处理，避免孤立的预测
+        for damage_level in range(2, 5):  # 对每个损伤等级
+            damage_mask = processed_pred == damage_level
+            if np.any(damage_mask):
+                # 使用形态学操作清理孤立预测
+                cleaned_mask = ndimage.binary_opening(damage_mask, 
+                                                    structure=np.ones((3,3)),
+                                                    iterations=1)
+                processed_pred[damage_mask & ~cleaned_mask] = 1  # 将孤立点设为未损坏
+        
         return processed_pred
-    
 def get_fixed_size_window(image, x1, y1, end_x, end_y, window_size=1024):
     """
     获取固定尺寸的窗口
