@@ -31,7 +31,7 @@ Image.MAX_IMAGE_PIXELS = None  # 禁用图像大小限制警告
 
 #3m分辨率推荐配置
 CONFIG = {
-    'SMALL_BUILDING_THRESHOLD': 150,   # 根据3m分辨率调整，约等于面积900平方米
+    'SMALL_BUILDING_THRESHOLD': 1000,   # 根据3m分辨率调整，约等于面积900平方米
     'WINDOW_SIZE': 512,    # 滑动窗口大小，覆盖实际地面约3072米
     'OVERLAP': 32,         # 重叠区域大小，实际约96米重叠
     'CONTEXT_WINDOW': 64,  # 上下文窗口，考虑周围约192米范围
@@ -316,16 +316,6 @@ def predict_image(model, pre_image, post_image, building_mask=None, device='cuda
         # 获取初始预测
         initial_pred = pred_prob.argmax(dim=1).squeeze().cpu().numpy()
         
-        if building_mask is not None:
-            building_mask_np = building_mask.squeeze().cpu().numpy()
-            # 创建预测器实例
-            predictor = BuildingAwarePredictor(model, device)
-            # 应用建筑物感知的增强
-            enhanced_pred = predictor.process_with_building_attention(
-                initial_pred, building_mask_np)
-            # 后处理优化
-            final_pred = predictor.post_process(enhanced_pred, building_mask_np)
-            return final_pred
         
         return initial_pred
 
