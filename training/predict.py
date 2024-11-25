@@ -31,7 +31,7 @@ Image.MAX_IMAGE_PIXELS = None  # 禁用图像大小限制警告
 
 #3m分辨率推荐配置
 CONFIG = {
-    'SMALL_BUILDING_THRESHOLD': 1000,   # 根据3m分辨率调整，约等于面积900平方米
+    'SMALL_BUILDING_THRESHOLD': 400,   # 根据3m分辨率调整，约等于面积900平方米
     'WINDOW_SIZE': 512,    # 滑动窗口大小，覆盖实际地面约3072米
     'OVERLAP': 32,         # 重叠区域大小，实际约96米重叠
     'CONTEXT_WINDOW': 64,  # 上下文窗口，考虑周围约192米范围
@@ -136,7 +136,35 @@ class BuildingAwarePredictor:
         
         assert processed_pred.min() >= 0 and processed_pred.max() <= 4, "Invalid prediction values"
         return processed_pred
-
+    def analyze_predictions(self, prediction, pred_prob, building_mask):
+        """
+        分析小型建筑物的预测概率
+        """
+        building_labels = measure.label(building_mask)
+        
+        print("\n小型建筑物预测概率分析:")
+        print("Building ID | Size | Unclass | No-Dam | Minor | Major | Destr | Pred")
+        print("-" * 75)
+        
+        for building_id in range(1, building_labels.max() + 1):
+            current_mask = building_labels == building_id
+            building_size = np.sum(current_mask)
+            
+            if building_size < self.config['SMALL_BUILDING_THRESHOLD']:
+                # 获取该建筑物区域每个类别的平均概率
+                class_probs = [np.mean(pred_prob[c][current_mask]) for c in range(5)]
+                pred_class = np.argmax(class_probs)
+                
+                # 打印结果
+                print(f"{building_id:4d} | {building_size:4d} | " + 
+                      " | ".join(f"{p:.3f}" for p in class_probs) +
+                      f" | {pred_class}")
+                
+                # 如果预测概率分布不够集中，提示可能需要额外关注
+                if max(class_probs) < 0.5:
+                    print(f"Warning: Building {building_id} has uncertain prediction "
+                          f"(max probability: {max(class_probs):.3f})")
+        print("\n")
     # def process_with_building_attention(self, prediction, building_mask, window_size=64):
     #     """
     #     对小型建筑物进行特殊处理，考虑周围建筑物的损伤情况来调整预测结果
@@ -224,7 +252,7 @@ def get_fixed_size_window(image, x1, y1, end_x, end_y, window_size=CONFIG['WINDO
     return fixed_window
 
 def predict_with_sliding_window(model, pre_image, post_image, building_mask=None, device='cuda'):
-    """使用滑动窗口进行预测"""
+    """修改滑动窗口预测以支持概率分析"""
     model.to(device)
     model.eval()
     
@@ -233,7 +261,8 @@ def predict_with_sliding_window(model, pre_image, post_image, building_mask=None
     overlap = CONFIG['OVERLAP']
     stride = window_size - overlap
     
-    output = np.zeros((height, width), dtype=np.float32)
+    # 初始化概率图
+    prob_maps = np.zeros((5, height, width), dtype=np.float32)
     counts = np.zeros((height, width), dtype=np.float32)
     
     if building_mask is not None:
@@ -242,7 +271,6 @@ def predict_with_sliding_window(model, pre_image, post_image, building_mask=None
     
     predictor = BuildingAwarePredictor(model, device) if building_mask is not None else None
     
-    # 计算总步数
     y_steps = (height - overlap) // stride + (1 if height % stride != 0 else 0)
     x_steps = (width - overlap) // stride + (1 if width % stride != 0 else 0)
     total_steps = y_steps * x_steps
@@ -266,31 +294,39 @@ def predict_with_sliding_window(model, pre_image, post_image, building_mask=None
                 else:
                     mask_window = None
                 
-                pred = predict_image(model, pre_window, post_window, mask_window, device)
+                # 获取预测和概率
+                _, window_probs = predict_image(model, pre_window, post_window, mask_window, device)
                 
                 actual_height = end_y - y1
                 actual_width = end_x - x1
-                pred = pred[:actual_height, :actual_width]
+                window_probs = window_probs[:, :actual_height, :actual_width]
                 
-                output[y1:end_y, x1:end_x] += pred
+                # 累积概率
+                prob_maps[:, y1:end_y, x1:end_x] += window_probs
                 counts[y1:end_y, x1:end_x] += 1
                 
                 pbar.update(1)
-                
                 if device == 'cuda':
                     torch.cuda.empty_cache()
     
+    # 计算平均概率
     valid_mask = counts > 0
-    output[valid_mask] = np.round(output[valid_mask] / counts[valid_mask])
-    output = output.astype(np.uint8)
+    for c in range(5):
+        prob_maps[c][valid_mask] /= counts[valid_mask]
+    
+    # 获取最终预测
+    output = np.argmax(prob_maps, axis=0).astype(np.uint8)
     
     if building_mask is not None:
+        # 分析最终的概率分布
+        predictor.analyze_predictions(output, prob_maps, building_mask_np)
+        # 进行后处理
         output = predictor.post_process(output, building_mask_np)
     
     return output
 def predict_image(model, pre_image, post_image, building_mask=None, device='cuda'):
     """
-    对单个窗口进行预测
+    对单个窗口进行预测，返回预测概率
     """
     model.to(device)
     model.eval()
@@ -305,20 +341,20 @@ def predict_image(model, pre_image, post_image, building_mask=None, device='cuda
     # 添加batch维度并移到设备
     pre_tensor = pre_tensor.unsqueeze(0).to(device)
     post_tensor = post_tensor.unsqueeze(0).to(device)
-    if building_mask is not None:
-        building_mask = building_mask.unsqueeze(0).to(device)
     
     with torch.no_grad():
         # 获取预测结果
         output = model(pre_tensor, post_tensor)
         pred_prob = F.softmax(output, dim=1)
+        pred_prob = pred_prob.squeeze().cpu().numpy()  # [5, H, W]
+        initial_pred = pred_prob.argmax(axis=0)
         
-        # 获取初始预测
-        initial_pred = pred_prob.argmax(dim=1).squeeze().cpu().numpy()
+        if building_mask is not None:
+            predictor = BuildingAwarePredictor(model, device)
+            # 分析小型建筑物的预测概率
+            predictor.analyze_predictions(initial_pred, pred_prob, building_mask.squeeze().cpu().numpy())
         
-        
-        return initial_pred
-
+        return initial_pred, pred_prob if building_mask is not None else initial_pred
 def preprocess_image(image, is_mask=False):
     """
     预处理图像，保持固定尺寸
