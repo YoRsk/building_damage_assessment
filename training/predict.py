@@ -31,7 +31,7 @@ Image.MAX_IMAGE_PIXELS = None  # 禁用图像大小限制警告
 
 #3m分辨率推荐配置
 CONFIG = {
-    'SMALL_BUILDING_THRESHOLD': 15,   # 根据3m分辨率调整，约等于面积900平方米
+    'SMALL_BUILDING_THRESHOLD': 100,   # 根据3m分辨率调整，约等于面积900平方米
     'WINDOW_SIZE': 512,    # 滑动窗口大小，覆盖实际地面约3072米
     'OVERLAP': 32,         # 重叠区域大小，实际约96米重叠
     'CONTEXT_WINDOW': 64,  # 上下文窗口，考虑周围约192米范围
@@ -65,11 +65,19 @@ class BuildingAwarePredictor:
             "destroyed": 4
         }
 
-    def process_with_building_attention(self, prediction, building_mask):
-        """对小型建筑物进行特殊处理，当预测为unclassified时选择第二可能的类别"""
+    def process_with_building_attention(self, prediction_prob, building_mask):
+        """
+        对小型建筑物进行特殊处理，当预测为unclassified时选择第二可能的类别
+        Args:
+            prediction_prob: softmax输出的概率分布 (H, W, 5)
+            building_mask: 建筑物掩码
+        """
+        # 先获取argmax的预测结果
+        prediction = np.argmax(prediction_prob, axis=2)
+        
         if prediction.shape != building_mask.shape:
             raise ValueError("Prediction and building_mask must have the same shape")
-            
+                
         enhanced_pred = prediction.copy()
         building_labels = measure.label(building_mask)
         
@@ -91,77 +99,45 @@ class BuildingAwarePredictor:
                 y2_ext = min(prediction.shape[0], y2 + pad)
                 x2_ext = min(prediction.shape[1], x2 + pad)
                 
-                # 分析周围区域，包括当前建筑物
-                context_region = prediction[y1_ext:y2_ext, x1_ext:x2_ext]
-                # 先看当前建筑物的预测情况
+                # 获取当前建筑物的预测和概率
                 current_pred = prediction[curr_building_mask]
+                current_probs = prediction_prob[curr_building_mask]
                 
                 # 只处理未分类的建筑物
                 if np.all(current_pred == 0):
-                    unique_classes, class_counts = np.unique(context_region, return_counts=True)
-                    # 按频次降序排序
-                    sort_idx = np.argsort(class_counts)[::-1]
-                    sorted_classes = unique_classes[sort_idx]
+                    # 获取每个像素第二高概率的类别
+                    sorted_indices = np.argsort(current_probs, axis=1)  # 按概率排序
+                    second_best_classes = sorted_indices[:, -2]  # 获取第二高概率的类别
                     
-                    # 如果第一个类别是未分类(0)且存在第二个类别，使用第二个类别
-                    if sorted_classes[0] == 0 and len(sorted_classes) > 1:
-                        enhanced_pred[curr_building_mask] = max(1, sorted_classes[1])
-                    else:
-                        # 如果只有未分类，设为no-damage
-                        enhanced_pred[curr_building_mask] = self.damage_classes["no-damage"]
+                    if len(second_best_classes) > 0:
+                        # 获取最常见的第二可能类别
+                        main_second_class = np.bincount(second_best_classes).argmax()
+                        if main_second_class > 0:  # 如果不是未分类
+                            enhanced_pred[curr_building_mask] = main_second_class
                         
         return enhanced_pred
-        # """对小型建筑物进行特殊处理"""
-        # enhanced_pred = prediction.copy()
-        # building_labels = measure.label(building_mask)
-        
-        # for building_id in range(1, building_labels.max() + 1):
-        #     building_mask = building_labels == building_id
-        #     building_size = np.sum(building_mask)
-            
-        #     if building_size < self.config['SMALL_BUILDING_THRESHOLD']:
-        #         # 获取建筑物的边界框
-        #         props = measure.regionprops(building_mask.astype(int))
-        #         bbox = props[0].bbox
-                
-        #         # 扩展感受野
-        #         y1, x1, y2, x2 = bbox
-        #         pad = self.config['CONTEXT_WINDOW'] // 2
-        #         y1_ext = max(0, y1 - pad)
-        #         x1_ext = max(0, x1 - pad)
-        #         y2_ext = min(prediction.shape[0], y2 + pad)
-        #         x2_ext = min(prediction.shape[1], x2 + pad)
-                
-        #         # 分析周围建筑物的损伤情况
-        #         context_region = prediction[y1_ext:y2_ext, x1_ext:x2_ext]
-        #         # 只考虑建筑物区域的损伤等级（非0的部分）
-        #         context_damage = context_region[context_region > 0]
-                
-        #         if len(context_damage) > 0:
-        #             # 计算损伤比例
-        #             damage_ratio = len(context_damage) / context_region.size
-                    
-        #             if damage_ratio > self.config['DAMAGE_THRESHOLD']:
-        #                 # 获取周围建筑物的主要损伤等级
-        #                 damage_levels, counts = np.unique(context_damage, return_counts=True)
-        #                 main_damage = damage_levels[counts.argmax()]
-                        
-        #                 # 当前建筑物的预测
-        #                 current_pred = prediction[building_mask]
-        #                 if np.all(current_pred == 0):  # 如果当前预测为未分类
-        #                     # 根据周围损伤情况设置损伤等级
-        #                     enhanced_pred[building_mask] = max(1, int(main_damage))
-                        
-        # return enhanced_pred
 
-    def post_process(self, prediction, building_mask):
-        """后处理优化"""
-        processed_pred = prediction.copy()
+    def post_process(self, prediction_prob, building_mask):
+        """
+        后处理函数，提高对损坏类别的检测敏感度
+        Args:
+            prediction_prob: softmax输出的概率分布 (H, W, 5)
+            building_mask: 建筑物掩码
+        Returns:
+            处理后的预测结果
+        """
+        # 先获取argmax的预测结果
+        processed_pred = np.argmax(prediction_prob, axis=2)
+        
+        # 确保非建筑区域为0
         processed_pred[building_mask == 0] = self.damage_classes["un-classified"]
         
         # 先应用小型建筑物的特殊处理
-        processed_pred = self.process_with_building_attention(processed_pred, building_mask)
-        
+          # 先应用小型建筑物的特殊处理（只在building_mask内）
+        small_building_pred = self.process_with_building_attention(prediction_prob, building_mask)
+        # 只更新building_mask内的区域
+        processed_pred[building_mask > 0] = small_building_pred[building_mask > 0]
+        # 对所有建筑物（包括大型建筑）进行处理
         building_labels = measure.label(building_mask)
         print("\n开始后处理优化...")
         for building_id in tqdm(range(1, building_labels.max() + 1), desc="处理建筑物"):
@@ -175,72 +151,10 @@ class BuildingAwarePredictor:
             else:
                 processed_pred[building_mask] = self.damage_classes["no-damage"]
         
+        # 验证输出
         assert processed_pred.min() >= 0 and processed_pred.max() <= 4, "Invalid prediction values"
         return processed_pred
-
-    # def process_with_building_attention(self, prediction, building_mask, window_size=64):
-    #     """
-    #     对小型建筑物进行特殊处理，考虑周围建筑物的损伤情况来调整预测结果
         
-    #     Args:
-    #         prediction (np.ndarray): 模型的预测结果，取值范围[0-4]
-    #             0: 未分类
-    #             1: 无损伤
-    #             2: 轻微损伤
-    #             3: 重度损伤
-    #             4: 摧毁
-    #         building_mask (np.ndarray): 建筑物掩码，1表示建筑物区域，0表示非建筑物区域
-    #         window_size (int): 查看周围区域的窗口大小
-            
-    #     Returns:
-    #         np.ndarray: 增强后的预测结果
-    #     """
-    #     enhanced_pred = prediction.copy()
-    #     building_labels = measure.label(building_mask)  # 为每个独立的建筑物标注唯一ID
-        
-    #     for building_id in range(1, building_labels.max() + 1):
-    #         # 获取当前建筑物的掩码
-    #         building_mask = building_labels == building_id
-    #         building_size = np.sum(building_mask)
-            
-    #         # 只处理小型建筑物
-    #         if building_size < self.small_building_threshold:
-    #             # 获取建筑物的边界框坐标
-    #             props = measure.regionprops(building_mask.astype(int))
-    #             bbox = props[0].bbox  # (min_row, min_col, max_row, max_col)
-                
-    #             # 先检查当前建筑物的预测情况
-    #             current_pred = prediction[building_mask]
-    #             # 如果当前预测为未分类(0)或无损伤(1)
-    #             if np.all((current_pred == 0) | (current_pred == 1)):
-    #                 # 扩展感受野，查看建筑物周围的区域
-    #                 y1, x1, y2, x2 = bbox
-    #                 pad = window_size // 2  # 向外扩展的像素数
-    #                 y1_ext = max(0, y1 - pad)
-    #                 x1_ext = max(0, x1 - pad)
-    #                 y2_ext = min(prediction.shape[0], y2 + pad)
-    #                 x2_ext = min(prediction.shape[1], x2 + pad)
-                    
-    #                 # 获取扩展区域内的预测结果
-    #                 context_region = prediction[y1_ext:y2_ext, x1_ext:x2_ext]
-    #                 # 获取周围有损伤的建筑物预测（值大于1的部分）
-    #                 damage_context = context_region[context_region > 1]
-                    
-    #                 if len(damage_context) > 0:
-    #                     # 计算周围区域的损伤比例
-    #                     damage_ratio = len(damage_context) / context_region.size
-                        
-    #                     if damage_ratio > 0.2:  # 如果周围有显著损伤
-    #                         # 统计损伤等级并获取最常见的损伤等级
-    #                         damage_levels, counts = np.unique(damage_context, return_counts=True)
-    #                         main_damage = damage_levels[counts.argmax()]
-                            
-    #                         # 如果周围主要损伤等级大于当前预测，更新预测结果
-    #                         if main_damage > np.max(current_pred):
-    #                             enhanced_pred[building_mask] = int(main_damage)
-        
-    #     return enhanced_pred
-
    
 def get_fixed_size_window(image, x1, y1, end_x, end_y, window_size=CONFIG['WINDOW_SIZE']):
     """
@@ -274,7 +188,8 @@ def predict_with_sliding_window(model, pre_image, post_image, building_mask=None
     overlap = CONFIG['OVERLAP']
     stride = window_size - overlap
     
-    output = np.zeros((height, width), dtype=np.float32)
+    # 修改为5个通道来存储softmax输出
+    output = np.zeros((height, width, 5), dtype=np.float32)
     counts = np.zeros((height, width), dtype=np.float32)
     
     if building_mask is not None:
@@ -283,7 +198,6 @@ def predict_with_sliding_window(model, pre_image, post_image, building_mask=None
     
     predictor = BuildingAwarePredictor(model, device) if building_mask is not None else None
     
-    # 计算总步数
     y_steps = (height - overlap) // stride + (1 if height % stride != 0 else 0)
     x_steps = (width - overlap) // stride + (1 if width % stride != 0 else 0)
     total_steps = y_steps * x_steps
@@ -306,12 +220,14 @@ def predict_with_sliding_window(model, pre_image, post_image, building_mask=None
                     )
                 else:
                     mask_window = None
-                #softmax
+                #pred 为 softmax
+                # 获取概率分布预测
                 pred = predict_image(model, pre_window, post_window, mask_window, device)
                 
                 actual_height = end_y - y1
                 actual_width = end_x - x1
-                pred = pred[:actual_height, :actual_width]
+                # 调整预测结果的大小
+                pred = pred[:actual_height, :actual_width, :]
                 
                 output[y1:end_y, x1:end_x] += pred
                 counts[y1:end_y, x1:end_x] += 1
@@ -321,9 +237,10 @@ def predict_with_sliding_window(model, pre_image, post_image, building_mask=None
                 if device == 'cuda':
                     torch.cuda.empty_cache()
     
+    # 计算平均概率
     valid_mask = counts > 0
-    output[valid_mask] = np.round(output[valid_mask] / counts[valid_mask])
-    output = output.astype(np.uint8)
+    for i in range(5):  # 对每个类别进行平均
+        output[:, :, i][valid_mask] /= counts[valid_mask]
     
     if building_mask is not None:
         # 应用建筑物感知的增强
@@ -333,33 +250,27 @@ def predict_with_sliding_window(model, pre_image, post_image, building_mask=None
     
     return output
 def predict_image(model, pre_image, post_image, building_mask=None, device='cuda'):
-    """
-    对单个窗口进行预测
-    """
+    """对单个窗口进行预测"""
     model.to(device)
     model.eval()
     
-    # 预处理
     pre_tensor = preprocess_image(pre_image, is_mask=False)
     post_tensor = preprocess_image(post_image, is_mask=False)
     
     if building_mask is not None:
         building_mask = preprocess_image(building_mask, is_mask=True)
     
-    # 添加batch维度并移到设备
     pre_tensor = pre_tensor.unsqueeze(0).to(device)
     post_tensor = post_tensor.unsqueeze(0).to(device)
     if building_mask is not None:
         building_mask = building_mask.unsqueeze(0).to(device)
     
     with torch.no_grad():
-        # 获取预测结果
         output = model(pre_tensor, post_tensor)
-        pred_prob = F.softmax(output, dim=1).squeeze().cpu().numpy()
-        
-        # 获取初始预测
-        # initial_pred = pred_prob.argmax(dim=1).squeeze().cpu().numpy()
-        
+        # 转换为概率分布
+        pred_prob = F.softmax(output, dim=1)
+        # 转换为numpy数组，调整维度顺序 from (C, H, W) to (H, W, C)
+        pred_prob = pred_prob.squeeze().permute(1, 2, 0).cpu().numpy()
         
         return pred_prob
 
@@ -538,8 +449,8 @@ def main():
     #./images/20220713_075021_72_222f_3B_Visual_clip.tif
     #./images/20220709_072527_82_242b_3B_Visual_clip.tif
     #./images/75cm_Bilinear.tif
-    pre_image_path = './training/images/20210709_073742_79_2431_3B_Visual_clip.tif'
-    post_image_path = './training/images/20220713_075021_72_222f_3B_Visual_clip.tif'
+    pre_image_path = './training/images/20220707_081357_78_227a_3B_Visual_clip.tif'
+    post_image_path = './training/images/20220921_080914_68_2254_3B_Visual_clip.tif'
 
     mask_path = ''
 
