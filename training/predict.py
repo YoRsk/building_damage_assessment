@@ -20,25 +20,24 @@ from scipy import ndimage
 
 Image.MAX_IMAGE_PIXELS = None  # 禁用图像大小限制警告
 
-# 0.75m分辨率推荐配置
+# 0.75m resolution
 # CONFIG = {
-#     'SMALL_BUILDING_THRESHOLD': 1500,  # 根据0.75m分辨率调整，约等于面积843.75平方米
-#     'WINDOW_SIZE': 512,     # 滑动窗口大小，覆盖实际地面约768米
-#     'OVERLAP': 128,         # 增加重叠以减少边界效应，实际约96米重叠
-#     'CONTEXT_WINDOW': 256,  # 上下文窗口大小，考虑周围约96米范围
-#     'DAMAGE_THRESHOLD': 0.3, # 损伤判断阈值
+#     'SMALL_BUILDING_THRESHOLD': 400,  # Adjusted to four times for 0.75m resolution
+#     'WINDOW_SIZE': 256,     # Setting this to 512 will miss many small targets
+#     'OVERLAP': 64,         # Increased overlap
+#     'CONTEXT_WINDOW': 32,  # Context window size
+#     'DAMAGE_THRESHOLD': 0.3, # Damage assessment threshold
 # }
-
-#3m分辨率推荐配置
+# 3m resolution
 CONFIG = {
-    'SMALL_BUILDING_THRESHOLD': 100,   # 根据3m分辨率调整，约等于面积900平方米
-    'WINDOW_SIZE': 512,    # 滑动窗口大小，覆盖实际地面约3072米
-    'OVERLAP': 32,         # 重叠区域大小，实际约96米重叠
-    'CONTEXT_WINDOW': 64,  # 上下文窗口，考虑周围约192米范围
-    'DAMAGE_THRESHOLD': 0.3,# 损伤判断阈值
+    'SMALL_BUILDING_THRESHOLD': 100,   # Pixel threshold for small buildings at 3m resolution
+    'WINDOW_SIZE': 512,    # Sliding window size
+    'OVERLAP': 32,         # Overlap region size
+    'CONTEXT_WINDOW': 64,  # Context window size
+    'DAMAGE_THRESHOLD': 0.3,# Damage assessment threshold
 }
 def load_model(model_path):
-    # model = SiameseUNetWithResnet50Encoder()
+    #model = SiameseUNetWithResnet50Encoder()
     model = SiamUNetConCVgg19()
     model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
@@ -67,12 +66,12 @@ class BuildingAwarePredictor:
 
     def process_with_building_attention(self, prediction_prob, building_mask):
         """
-        对小型建筑物进行特殊处理，当预测为unclassified时选择第二可能的类别
+        Process small buildings with special attention, considering surrounding context when unclassified
         Args:
-            prediction_prob: softmax输出的概率分布 (H, W, 5)
-            building_mask: 建筑物掩码
+            prediction_prob: softmax probability distribution (H, W, 5)
+            building_mask: building mask
         """
-        # 先获取argmax的预测结果
+        # Get initial prediction using argmax
         prediction = np.argmax(prediction_prob, axis=2)
         
         if prediction.shape != building_mask.shape:
@@ -81,17 +80,17 @@ class BuildingAwarePredictor:
         enhanced_pred = prediction.copy()
         building_labels = measure.label(building_mask)
         
-        print("\n处理小型建筑物...")
-        for building_id in tqdm(range(1, building_labels.max() + 1), desc="分析小型建筑"):
+        print("\nProcessing small buildings...")
+        for building_id in tqdm(range(1, building_labels.max() + 1), desc="Analyzing small buildings"):
             curr_building_mask = building_labels == building_id
             building_size = np.sum(curr_building_mask)
             
             if building_size < self.config['SMALL_BUILDING_THRESHOLD']:
-                # 获取建筑物的边界框
+                # Get building boundary box
                 props = measure.regionprops(curr_building_mask.astype(int))
                 bbox = props[0].bbox
                 
-                # 扩展感受野
+                # Extend receptive field
                 y1, x1, y2, x2 = bbox
                 pad = self.config['CONTEXT_WINDOW'] // 2
                 y1_ext = max(0, y1 - pad)
@@ -99,22 +98,44 @@ class BuildingAwarePredictor:
                 y2_ext = min(prediction.shape[0], y2 + pad)
                 x2_ext = min(prediction.shape[1], x2 + pad)
                 
-                # 获取当前建筑物的预测和概率
+                # Get predictions for the building and its context
                 current_pred = prediction[curr_building_mask]
+                context_pred = prediction[y1_ext:y2_ext, x1_ext:x2_ext]
                 current_probs = prediction_prob[curr_building_mask]
+                context_probs = prediction_prob[y1_ext:y2_ext, x1_ext:x2_ext]
                 
-                # 只处理未分类的建筑物
+                # Only process unclassified buildings
                 if np.all(current_pred == 0):
-                    # 获取每个像素第二高概率的类别
-                    sorted_indices = np.argsort(current_probs, axis=1)  # 按概率排序
-                    second_best_classes = sorted_indices[:, -2]  # 获取第二高概率的类别
+                    # Consider both building probabilities and context
+                    context_classes = context_pred[context_pred > 0]  # Get non-zero classes in context
                     
-                    if len(second_best_classes) > 0:
-                        # 获取最常见的第二可能类别
-                        main_second_class = np.bincount(second_best_classes).argmax()
-                        if main_second_class > 0:  # 如果不是未分类
-                            enhanced_pred[curr_building_mask] = main_second_class
-                        
+                    if len(context_classes) > 0:
+                        # Get distribution of classes in context
+                        context_class_dist = np.bincount(context_classes)
+                        if len(context_class_dist) > 1:  # If there are non-zero classes
+                            dominant_context_class = np.argmax(context_class_dist[1:]) + 1
+                            
+                            # Get second highest probabilities for the building
+                            sorted_indices = np.argsort(current_probs, axis=1)
+                            second_best_classes = sorted_indices[:, -2]
+                            
+                            if len(second_best_classes) > 0:
+                                main_second_class = np.bincount(second_best_classes).argmax()
+                                
+                                # If second-best class matches dominant context class, use it
+                                if main_second_class == dominant_context_class:
+                                    enhanced_pred[curr_building_mask] = main_second_class
+                                # Otherwise, use the class with higher probability
+                                elif main_second_class > 0:
+                                    # Compare probabilities
+                                    second_best_prob = np.mean(current_probs[:, main_second_class])
+                                    context_class_prob = np.mean(context_probs[..., dominant_context_class])
+                                    
+                                    if second_best_prob > context_class_prob:
+                                        enhanced_pred[curr_building_mask] = main_second_class
+                                    else:
+                                        enhanced_pred[curr_building_mask] = dominant_context_class
+                                
         return enhanced_pred
 
     def post_process(self, prediction_prob, building_mask):
@@ -431,10 +452,10 @@ def main():
     parser.add_argument('--ground-truth-mask', type=str, default='',
                       help='Path to the ground truth mask file (for evaluation)')
     args = parser.parse_args()
-    
-    # model_path = './checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch49.pth'
-    model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch52.pth'
-    # model_path = './checkpoints/best0921.pth'
+    model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
+    #model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch52.pth'
+    #好像下面这个RESNET的
+    #model_path = './training/checkpoints/best0921.pth'
     # # xbd
     # img_home_path = "C:/Users/xiao/peng/xbd/Dataset/Validation"
     # pre_image_path = img_home_path + "/Pre/Image512/"+ "hurricane-michael_00000400_pre_disaster.png"
@@ -448,8 +469,11 @@ def main():
     #post
     #./images/20220713_075021_72_222f_3B_Visual_clip.tif
     #./images/20220709_072527_82_242b_3B_Visual_clip.tif
+
     #./images/75cm_Bilinear.tif
-    pre_image_path = './training/images/20220707_081357_78_227a_3B_Visual_clip.tif'
+    #./images/75cm_Bilinear_20220921.tif
+    # pre_image_path = './training/images/20210915_073716_84_2440_3B_Visual_clip.tif'
+    pre_image_path = './training/images/20210915_073716_84_2440_3B_Visual_clip.tif'
     post_image_path = './training/images/20220921_080914_68_2254_3B_Visual_clip.tif'
 
     mask_path = ''
