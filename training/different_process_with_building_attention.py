@@ -1,3 +1,14 @@
+"""
+使用扩展边界框获取建筑物周围的上下文预测和概率
+分析上下文区域中非零类别的分布
+结合上下文信息和建筑物自身的第二高概率类别来做决策：
+
+如果第二高概率类别与上下文主导类别相同，直接使用该类别
+如果不同，比较两个类别的概率，选择概率更高的类别
+保持了原有的小型建筑物判断逻辑，但增加了上下文信息的考虑
+
+目前结果，最小的建筑还是有问题
+"""
 def process_with_building_attention(self, prediction_prob, building_mask):
     """
     Process small buildings with special attention, considering surrounding context when unclassified
@@ -6,7 +17,7 @@ def process_with_building_attention(self, prediction_prob, building_mask):
         building_mask: building mask
     """
     # Get initial prediction using argmax
-    prediction = np.argmax(prediction_prob, axis=2)
+    prediction = np.argmax(pvrediction_prob, axis=2)
     
     if prediction.shape != building_mask.shape:
         raise ValueError("Prediction and building_mask must have the same shape")
