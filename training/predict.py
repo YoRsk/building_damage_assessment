@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
+import torchmetrics
 from torchvision import transforms
 from model.my_models import SiameseUNetWithResnet50Encoder, SiamUNetConCVgg19  # 导入您的模型
 from utils.dice_score import multiclass_dice_coeff, dice_coeff
@@ -78,6 +79,7 @@ class BuildingAwarePredictor:
             raise ValueError("Prediction and building_mask must have the same shape")
                 
         enhanced_pred = prediction.copy()
+        # 2. 给每个独立建筑物打标签
         building_labels = measure.label(building_mask)
         
         print("\n处理小型建筑物...")
@@ -145,7 +147,9 @@ class BuildingAwarePredictor:
             damage_levels = building_pred[building_pred > 0]
             
             if len(damage_levels) > 0:
+                # 找出最常见的损坏等级
                 main_damage = np.bincount(damage_levels.astype(int)).argmax()
+                # 将整个建筑物设置为该损坏等级
                 processed_pred[building_mask] = main_damage
             else:
                 processed_pred[building_mask] = self.damage_classes["no-damage"]
@@ -394,32 +398,108 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
 
     plt.show()
 def calculate_metrics(prediction, ground_truth):
-    prediction_tensor = torch.from_numpy(prediction).unsqueeze(0)
-    ground_truth_tensor = torch.from_numpy(ground_truth).unsqueeze(0)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    dice = multiclass_dice_coeff(
-        F.one_hot(prediction_tensor, 5).permute(0, 3, 1, 2).float(),
-        F.one_hot(ground_truth_tensor, 5).permute(0, 3, 1, 2).float(),
-        reduce_batch_first=False
-    )
+    # 计算5分类指标
+    prediction = prediction.astype(np.int64)
+    ground_truth = ground_truth.astype(np.int64)
+    prediction_tensor = torch.from_numpy(prediction).long().unsqueeze(0).to(device)
+    ground_truth_tensor = torch.from_numpy(ground_truth).long().unsqueeze(0).to(device)
     
-    f1_score = F1Score(task='multiclass', num_classes=5, average='macro')
-    f1 = f1_score(prediction_tensor, ground_truth_tensor)
+    # 初始化5分类metrics
+    accuracy_5 = torchmetrics.Accuracy(task='multiclass', num_classes=5, validate_args=False).to(device)
+    precision_5 = torchmetrics.Precision(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
+    recall_5 = torchmetrics.Recall(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
+    f1_score_5 = torchmetrics.F1Score(task='multiclass', num_classes=5, average='macro').to(device)
+    f1_score_5_per_class = torchmetrics.F1Score(task='multiclass', num_classes=5, average=None).to(device)
+    iou_5 = JaccardIndex(task="multiclass", num_classes=5).to(device)
     
-    iou_score = JaccardIndex(task="multiclass", num_classes=5)
-    iou = iou_score(prediction_tensor, ground_truth_tensor)
+    # 更新5分类metrics
+    accuracy_5.update(prediction_tensor, ground_truth_tensor)
+    precision_5.update(prediction_tensor, ground_truth_tensor)
+    recall_5.update(prediction_tensor, ground_truth_tensor)
+    f1_score_5.update(prediction_tensor, ground_truth_tensor)
+    f1_score_5_per_class.update(prediction_tensor, ground_truth_tensor)
+    iou_5.update(prediction_tensor, ground_truth_tensor)
     
-    precision_score = Precision(task="multiclass", num_classes=5, average='macro')
-    precision = precision_score(prediction_tensor, ground_truth_tensor)
+    # 计算5分类结果
+    acc_5 = accuracy_5.compute()
+    prec_5 = precision_5.compute()
+    rec_5 = recall_5.compute()
+    f1_5 = f1_score_5.compute()
+    f1_5_per_class = f1_score_5_per_class.compute()
+    iou_score_5 = iou_5.compute()
     
-    recall_score = Recall(task="multiclass", num_classes=5, average='macro')
-    recall = recall_score(prediction_tensor, ground_truth_tensor)
+    # 创建二分类版本 (保持0为背景)
+    binary_prediction = prediction.copy()
+    binary_ground_truth = ground_truth.copy()
     
-    # auroc = AUROC(task="multiclass", num_classes=5)
-    # pred_probs = F.one_hot(torch.from_numpy(prediction).long(), 5).float()
-    # auc_roc = auroc(pred_probs, ground_truth_tensor)
+    # 将2,3,4类转换为2（损坏类）
+    binary_prediction[(binary_prediction == 2) | (binary_prediction == 3) | (binary_prediction == 4)] = 2
+    binary_ground_truth[(binary_ground_truth == 2) | (binary_ground_truth == 3) | (binary_ground_truth == 4)] = 2
     
-    return dice.item(), f1.item(), iou.item(), precision.item(), recall.item()
+    # 转换为tensor
+    binary_prediction_tensor = torch.from_numpy(binary_prediction).long().unsqueeze(0).to(device)
+    binary_ground_truth_tensor = torch.from_numpy(binary_ground_truth).long().unsqueeze(0).to(device)
+    
+    # 初始化二分类metrics
+    accuracy_2 = torchmetrics.Accuracy(task='multiclass', num_classes=3, validate_args=False).to(device)
+    precision_2 = torchmetrics.Precision(task='multiclass', num_classes=3, average='macro', validate_args=False).to(device)
+    recall_2 = torchmetrics.Recall(task='multiclass', num_classes=3, average='macro', validate_args=False).to(device)
+    f1_score_2 = torchmetrics.F1Score(task='multiclass', num_classes=3, average='macro').to(device)
+    f1_score_2_per_class = torchmetrics.F1Score(task='multiclass', num_classes=3, average=None).to(device)
+    iou_2 = JaccardIndex(task="multiclass", num_classes=3).to(device)
+    
+    # 更新二分类metrics
+    accuracy_2.update(binary_prediction_tensor, binary_ground_truth_tensor)
+    precision_2.update(binary_prediction_tensor, binary_ground_truth_tensor)
+    recall_2.update(binary_prediction_tensor, binary_ground_truth_tensor)
+    f1_score_2.update(binary_prediction_tensor, binary_ground_truth_tensor)
+    f1_score_2_per_class.update(binary_prediction_tensor, binary_ground_truth_tensor)
+    iou_2.update(binary_prediction_tensor, binary_ground_truth_tensor)
+    
+    # 计算二分类结果
+    acc_2 = accuracy_2.compute()
+    prec_2 = precision_2.compute()
+    rec_2 = recall_2.compute()
+    f1_2 = f1_score_2.compute()
+    f1_2_per_class = f1_score_2_per_class.compute()
+    iou_score_2 = iou_2.compute()
+    
+    # 清除缓存
+    for metric in [accuracy_5, precision_5, recall_5, f1_score_5, iou_5, f1_score_5_per_class,
+                  accuracy_2, precision_2, recall_2, f1_score_2, iou_2, f1_score_2_per_class]:
+        metric.reset()
+    
+    return (acc_5.item(), f1_5.item(), iou_score_5.item(), prec_5.item(), rec_5.item(), f1_5_per_class.tolist(),
+            acc_2.item(), f1_2.item(), iou_score_2.item(), prec_2.item(), rec_2.item(), f1_2_per_class.tolist())
+# def calculate_metrics(prediction, ground_truth):
+#     prediction_tensor = torch.from_numpy(prediction).unsqueeze(0)
+#     ground_truth_tensor = torch.from_numpy(ground_truth).unsqueeze(0)
+    
+#     dice = multiclass_dice_coeff(
+#         F.one_hot(prediction_tensor, 5).permute(0, 3, 1, 2).float(),
+#         F.one_hot(ground_truth_tensor, 5).permute(0, 3, 1, 2).float(),
+#         reduce_batch_first=False
+#     )
+    
+#     f1_score = F1Score(task='multiclass', num_classes=5, average='macro')
+#     f1 = f1_score(prediction_tensor, ground_truth_tensor)
+    
+#     iou_score = JaccardIndex(task="multiclass", num_classes=5)
+#     iou = iou_score(prediction_tensor, ground_truth_tensor)
+    
+#     precision_score = Precision(task="multiclass", num_classes=5, average='macro')
+#     precision = precision_score(prediction_tensor, ground_truth_tensor)
+    
+#     recall_score = Recall(task="multiclass", num_classes=5, average='macro')
+#     recall = recall_score(prediction_tensor, ground_truth_tensor)
+    
+#     # auroc = AUROC(task="multiclass", num_classes=5)
+#     # pred_probs = F.one_hot(torch.from_numpy(prediction).long(), 5).float()
+#     # auc_roc = auroc(pred_probs, ground_truth_tensor)
+    
+#     return dice.item(), f1.item(), iou.item(), precision.item(), recall.item()
 
 def main():
     parser = argparse.ArgumentParser()
@@ -454,8 +534,6 @@ def main():
     pre_image_path = './training/images/20210915_073716_84_2440_3B_Visual_clip.tif'
     post_image_path = './training/images/20220921_080914_68_2254_3B_Visual_clip.tif'
 
-    mask_path = ''
-
     # #my dataset2
     # pre_image_path = './images/before_Zhovteneyvi.jpeg'
     # post_image_path = './images/after_Zhovteneyvi.jpeg'
@@ -483,6 +561,10 @@ def main():
     if args.ground_truth_mask:
         try:
             ground_truth_mask = Image.open(args.ground_truth_mask)
+            ground_truth_np = np.array(ground_truth_mask)
+            # 确保mask是单通道的
+            if len(ground_truth_np.shape) > 2:
+                ground_truth_np = ground_truth_np[:,:,0]  # 取第一个通道
             print("Successfully loaded ground truth mask")
         except Exception as e:
             print(f"Error loading ground truth mask: {e}")
@@ -500,14 +582,36 @@ def main():
     
     # 评估
     if ground_truth_mask is not None:
+        # 在进行预测之前调整ground truth的尺寸
+        ground_truth_mask = ground_truth_mask.resize(
+            (post_image.size[0], post_image.size[1]), 
+            Image.NEAREST
+        )
         ground_truth_np = np.array(ground_truth_mask)
+        metrics  = calculate_metrics(prediction, ground_truth_np)
+                
+        print("\nMulti-classes evaluation result:")
+        print(f'Accuracy: {metrics[0]:.4f}')
+        print(f'F1 Score: {metrics[1]:.4f}')
+        print(f'IoU: {metrics[2]:.4f}')
+        print(f'Precision: {metrics[3]:.4f}')
+        print(f'Recall: {metrics[4]:.4f}')
+        print("\nEach class f1 score:")
+        class_names_5 = ['Unclassified', 'No Damage', 'Minor Damage', 'Major Damage', 'Destroyed']
+        for i, f1 in enumerate(metrics[5]):
+            print(f'{class_names_5[i]}: {f1:.4f}')
+        print("\n binary-classes (undamaged vs damaged):")
+        print(f'Accuracy: {metrics[6]:.4f}')
+        print(f'F1 Score: {metrics[7]:.4f}')
+        print(f'IoU: {metrics[8]:.4f}')
+        print(f'Precision: {metrics[9]:.4f}')
+        print(f'Recall: {metrics[10]:.4f}')
+        print("\nEach class f1 score:")
+        class_names_2 = ['Background', 'Undamaged', 'Damaged']
+        for i, f1 in enumerate(metrics[11]):
+            print(f'{class_names_2[i]}: {f1:.4f}')
         visualize_prediction(np.array(post_image), ground_truth_np, prediction, args.show_original)
-        dice, f1, iou, precision, recall = calculate_metrics(prediction, ground_truth_np)
-        print(f'Dice Score: {dice:.4f}')
-        print(f'F1 Score: {f1:.4f}')
-        print(f'IoU: {iou:.4f}')
-        print(f'Precision: {precision:.4f}')
-        print(f'Recall: {recall:.4f}')
+
     else:
         visualize_prediction(np.array(post_image), None, prediction, args.show_original)
 
