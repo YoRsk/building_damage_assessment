@@ -31,7 +31,7 @@ Image.MAX_IMAGE_PIXELS = None  # 禁用图像大小限制警告
 # }
 # 3m resolution
 CONFIG = {
-    'SMALL_BUILDING_THRESHOLD': 100,   # Pixel threshold for small buildings at 3m resolution
+    'SMALL_BUILDING_THRESHOLD': 44.5,   # Pixel threshold for small buildings at 3m resolution
     'WINDOW_SIZE': 512,    # Sliding window size
     'OVERLAP': 32,         # Overlap region size
     'CONTEXT_WINDOW': 64,  # Context window size
