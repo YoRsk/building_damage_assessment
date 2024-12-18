@@ -23,7 +23,15 @@ from torch.utils.data import DataLoader, random_split
 from utils.tensor_encoder import TensorEncoder
 from clearml import Task
 from torchmetrics import JaccardIndex
+closs = nn.CrossEntropyLoss()
 
+floss = FocalLoss(mode = 'multiclass',
+                alpha = None,
+                gamma = 2.0,
+                ignore_index = None,
+                reduction = "mean",
+                normalized = False,
+                reduced_threshold = None)
 # 设置日志
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -33,38 +41,29 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
-# 数���路径设置
-img_home_path = "C:/Users/xiao/peng/xbd/Dataset"
-post_dir_img = img_home_path + "/TierFull/Post/Image512/"
-post_dir_mask = img_home_path + "/TierFull/Post/Label512/"
-pre_dir_img = img_home_path + "/TierFull/Pre/Image512/"
-pre_dir_mask = img_home_path + "/TierFull/Pre/Label512/"
-post_dir_val_img = img_home_path + "/Validation/Post/Image512/"
-post_dir_val_mask = img_home_path + "/Validation/Post/Label512/"
-pre_dir_val_img = img_home_path + "/Validation/Pre/Image512/"
-pre_dir_val_mask = img_home_path + "/Validation/Pre/Label512/"
-post_dir_test_img = img_home_path + "/Test/Post/Image512/"
-post_dir_test_mask = img_home_path + "/Test/Post/Label512/"
-pre_dir_test_img = img_home_path + "/Test/Pre/Image512/"
-pre_dir_test_mask = img_home_path + "/Test/Pre/Label512/"
+img_home_path = "C:/Users/xiao/PycharmProjects/building_damage_assessment/training/images"
+train_data = {
+    'pre_img': f"{img_home_path}/Pre/Image512/",
+    'pre_mask': f"{img_home_path}/Pre/Label512/",
+    'post_img': f"{img_home_path}/Post/Image512/",
+    'post_mask': f"{img_home_path}/Post/Label512/"
+}
 
 def train_net_enhanced(net,
                       device,
-                      start_epoch: int = 1,
-                      epochs: int = 5,
-                      batch_size: int = 1,
+                      epochs: int = 30,
+                      batch_size: int = 64,
                       learning_rate: float = 1e-5,
-                      train_percent: float = 1,
-                      val_percent: float = 1,
-                      test_percent: float = 1,
+                      train_loader=None,
+                      val_loader=None,
                       save_checkpoint: bool = True,
-                      img_scale: float = 0.5,
-                      ampbool: bool = False,
-                      traintype: str = 'both',
                       gradient_clipping: float = 1.0):
-    """
-    使用增强数据集的训练函数
-    """
+    """使用增强数据集的训练函数"""
+    
+    # 使用传入的data loader
+    if train_loader is None or val_loader is None:
+        raise ValueError("train_loader and val_loader must be provided")
+    
     # 创建目录
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     dir_name = f'enhanced_v_1.0_lr_{learning_rate:.1e}_{timestamp}'
@@ -76,45 +75,6 @@ def train_net_enhanced(net,
         dir_path.mkdir(parents=True, exist_ok=True)
     
     writer = SummaryWriter(log_dir=str(log_dir))
-
-    # 创建数据集
-    try:
-        train = EnhancedSatelliteDataset(
-            pre_dir_img, 
-            pre_dir_mask,
-            post_dir_img,
-            post_dir_mask,
-            patch_size=1024,
-            stride=512,
-            augment=True
-        )
-        validate = EnhancedSatelliteDataset(
-            pre_dir_val_img,
-            pre_dir_val_mask,
-            post_dir_val_img,
-            post_dir_val_mask,
-            patch_size=1024,
-            stride=1024,  # 验证集不需要重叠
-            augment=False
-        )
-        test_set = EnhancedSatelliteDataset(
-            pre_dir_test_img,
-            pre_dir_test_mask,
-            post_dir_test_img,
-            post_dir_test_mask,
-            patch_size=1024,
-            stride=1024,
-            augment=False
-        )
-    except (AssertionError, RuntimeError) as e:
-        print(f'Error creating datasets: {e}')
-        return
-
-    # 创建数据加载器
-    loader_args = dict(batch_size=batch_size, num_workers=1, pin_memory=True)
-    train_loader = DataLoader(train, shuffle=True, **loader_args)
-    val_loader = DataLoader(validate, shuffle=False, **loader_args)
-    test_loader = DataLoader(test_set, shuffle=False, **loader_args)
 
     # 设置优化器和学习率调度器
     optimizer = optim.AdamW(net.parameters(), lr=learning_rate, weight_decay=0.05)
@@ -134,15 +94,12 @@ def train_net_enhanced(net,
     saved_confusion_matrices = []
     saved_log_files = []
 
-    # 创建训练数据记录字典
+    # 创建训练数据记��字典
     training_data = {
         "hyperparameters": {
             "batch_size": batch_size,
             "learning_rate": learning_rate,
             "epochs": epochs,
-            "img_scale": img_scale,
-            "train_percent": train_percent,
-            "val_percent": val_percent,
             "ampbool": ampbool,
             "traintype": traintype,
             "gradient_clipping": gradient_clipping
@@ -297,17 +254,17 @@ def train_net_enhanced(net,
                     logger.info(f'Deleted old checkpoint: {old_checkpoint}')
 
         # 保存混淆矩阵
-        if val_confusion_matrix is not None:
-            cm_path = save_dir / f"epoch_{epoch}_validation_confusion_matrix"
-            save_confusion_matrix(val_confusion_matrix, str(save_dir), f"epoch_{epoch}_validation")
-            saved_confusion_matrices.append(str(cm_path))
+        # if val_confusion_matrix is not None:
+        #     cm_path = save_dir / f"epoch_{epoch}_validation_confusion_matrix"
+        #     save_confusion_matrix(val_confusion_matrix, str(save_dir), f"epoch_{epoch}_validation")
+        #     saved_confusion_matrices.append(str(cm_path))
             
-            if len(saved_confusion_matrices) > 20:
-                old_cm = Path(saved_confusion_matrices.pop(0))
-                if (old_cm.with_suffix('.png')).exists():
-                    (old_cm.with_suffix('.png')).unlink()
-                if (old_cm.with_suffix('.npy')).exists():
-                    (old_cm.with_suffix('.npy')).unlink()
+        #     if len(saved_confusion_matrices) > 20:
+        #         old_cm = Path(saved_confusion_matrices.pop(0))
+        #         if (old_cm.with_suffix('.png')).exists():
+        #             (old_cm.with_suffix('.png')).unlink()
+        #         if (old_cm.with_suffix('.npy')).exists():
+        #             (old_cm.with_suffix('.npy')).unlink()
 
         # 定期保存training_data到log文件
         if epoch % 5 == 0 or epoch == epochs - 1:
@@ -329,7 +286,7 @@ def train_net_enhanced(net,
 
     # 最终测试集评估
     test_score, test_class_scores, test_loss, test_f1_macro, test_f1_per_class, test_iou, test_confusion_matrix = evaluate(
-        net, test_loader, device, ampbool, traintype
+        net, val_loader, device, ampbool, traintype
     )
     
     print('\nFinal Test Results:')
@@ -343,28 +300,144 @@ def train_net_enhanced(net,
     with open(save_dir / final_filename, 'w') as f:
         json.dump(training_data, f, indent=4, cls=TensorEncoder)
 
-    # 保存测试集混淆矩阵
-    if test_confusion_matrix is not None:
-        save_confusion_matrix(test_confusion_matrix, str(save_dir), "final_test")
+    # # 保存测试集混淆矩阵
+    # if test_confusion_matrix is not None:
+    #     save_confusion_matrix(test_confusion_matrix, str(save_dir), "final_test")
 
     writer.close()
     return net
 
+def train_with_loqo(net,
+                   device,
+                   epochs: int = 30,          # 按论文修改为30
+                   batch_size: int = 64,      # 按论文修改为64
+                   learning_rate: float = 1e-5,
+                   save_checkpoint: bool = True,
+                   gradient_clipping: float = 1.0):
+    """
+    使用LOQO策略进行训练
+    每次使用3/4的数据训练，1/4的数据测试
+    """
+    results = []
+    
+    # 对每个四分之一进行交叉验证
+    for fold in range(4):
+        print(f"Training fold {fold+1}/4")
+        
+        # 创建训练集（使用其他三个四分之一）
+        train_dataset = EnhancedSatelliteDataset(
+            pre_dir_img=train_data['pre_img'],
+            pre_dir_mask=train_data['pre_mask'],
+            post_dir_img=train_data['post_img'],
+            post_dir_mask=train_data['post_mask'],
+            patch_size=1024,
+            stride=64,      # 实现960像素重叠
+            augment=True,
+            quarter_idx=-fold-1
+        )
+        
+        # 创建测试集（使用当前四分之一）
+        test_dataset = EnhancedSatelliteDataset(
+            pre_dir_img=train_data['pre_img'],
+            pre_dir_mask=train_data['pre_mask'],
+            post_dir_img=train_data['post_img'],
+            post_dir_mask=train_data['post_mask'],
+            patch_size=1024,
+            stride=1024,    # 测试时不需要重叠
+            augment=False,
+            quarter_idx=fold
+        )
+        
+        # 创建数据加载器
+        train_loader = DataLoader(train_dataset, 
+                                batch_size=batch_size, 
+                                shuffle=True, 
+                                num_workers=4,    # 增加工作进程
+                                pin_memory=True)  # 使用PIN_MEMORY加速
+        test_loader = DataLoader(test_dataset, 
+                               batch_size=1, 
+                               shuffle=False)
+        
+        # 训练当前fold
+        fold_results = train_net_enhanced(
+            net=net,
+            device=device,
+            epochs=epochs,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            train_loader=train_loader,
+            val_loader=test_loader,
+            save_checkpoint=save_checkpoint,
+            gradient_clipping=gradient_clipping
+        )
+        
+        results.append(fold_results)
+        
+    return results
+
+# def calculate_loss(pred, target):
+#     """
+#     仅在有标注的像素上计算交叉熵损失
+#     """
+#     # 创建掩码，标识有效的（已标注的）像素
+#     valid_pixels = target != 255  # 假设255表示未标注
+    
+#     # 只在有效像素上计算损失
+#     loss = F.cross_entropy(
+#         pred[valid_pixels],
+#         target[valid_pixels],
+#         reduction='mean'
+#     )
+#     return loss
+
+classes = 5
+bilinear = True
+# loadstate = False
+loadstate = True
+load = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
+# load = './checkpoints/best0921.pth'
+start_epoch = 1
+epochs = 60
+batch_size = 4
+# batch_size = 1
+# lr = 2.69e-4
+# lr = 8.125358e-4
+
+lr = 3.5e-5
+# gamma = 0.98
+# lr = lr * (gamma ** 100)  # 计算经过100个epoch后的学习率
+
+# lr = 1e-6
+scale = 1
+train = 1
+# train =0.15259598603*2
+val = 1
+test = 1
+ampbool = True
+save_checkpoint = True
+traintype = 'both'
+gradclip = 1.0
+
+
 if __name__ == '__main__':
-    task = Task.init(project_name="damage-assessment", task_name="enhanced_training")
+    # task = Task.init(project_name="damage-assessment", task_name="enhanced_training_loqo")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    net = SiamUNetConCVgg19()  # 或其他模型
+    net = SiamUNetConCVgg19()
+    # net = SiameseUNetWithResnet50Encoder()
+    if loadstate:
+        net.load_state_dict(torch.load(load, map_location=device))
+        logger.info(f'Model loaded from {load}')
+
     net.to(device)
     
-    train_net_enhanced(
+    # 使用LOQO训练策略
+    results = train_with_loqo(
         net=net,
         device=device,
-        epochs=60,
-        batch_size=4,
+        epochs=30,          # 按论文设置
+        batch_size=64,      # 按论文设置
         learning_rate=3.5e-5,
         save_checkpoint=True,
-        ampbool=True,
-        traintype='both',
         gradient_clipping=1.0
-    ) 
+    )

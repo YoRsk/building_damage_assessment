@@ -144,7 +144,7 @@ def train_net(net,
     save_dir = Path(f'training_logs/{dir_name}/')
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    # 创建 TensorBoard 日志目录
+    # 创建 TensorBoard 日志目录val_confusion_matrix
     log_dir = Path(f'tensorboard_logs/{dir_name}/')
     log_dir.mkdir(parents=True, exist_ok=True)
     writer = SummaryWriter(log_dir=str(log_dir))

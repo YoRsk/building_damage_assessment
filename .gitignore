@@ -1,5 +1,8 @@
 .idea/
 model/__pycache__/
+checkpoints/
+tensorboard_logs/
+training_logs/
 training/model/__pycache__/
 training/utils/__pycache__/
 training/model/__pycache__/
@@ -14,4 +17,4 @@ onnx_export.py
 SiameseUNetWithResnet50Encoder.onnx
 **/*.tif
 **/*.jpeg
-process.log
+**/*.log
