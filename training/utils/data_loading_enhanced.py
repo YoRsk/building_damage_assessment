@@ -12,13 +12,15 @@ class EnhancedSatelliteDataset(Dataset):
     """
     增强版卫星图像数据集，实现更复杂的数据增强策略
     """
+    #                 patch_size=1024,
+    #                 stride=60,
     def __init__(self,
                  pre_dir_img,
                  pre_dir_mask,
                  post_dir_img,
                  post_dir_mask,
-                 patch_size=1024,
-                 stride=64,
+                 patch_size=256,
+                 stride=16,
                  augment=True,
                  quarter_idx=None):
         """

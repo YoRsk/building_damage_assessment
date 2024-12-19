@@ -38,7 +38,6 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
                         # predict the mask
                         mask_pred = net(preimage, postimage)
                         # convert to one-hot format
-                        # 暂时不用交叉熵
                         loss = criterion(mask_pred, true_masks)
                         loss += dice_loss(
                             F.softmax(mask_pred, dim=1).float()[:, 1:, ...],

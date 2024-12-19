@@ -77,7 +77,7 @@ def train_net_enhanced(net,
     writer = SummaryWriter(log_dir=str(log_dir))
 
     # 设置优化器和学习率调度器
-    optimizer = optim.AdamW(net.parameters(), lr=learning_rate, weight_decay=0.05)
+    optimizer = optim.AdamW(net.parameters(), lr=learning_rate, weight_decay=5e-6)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-7)
     grad_scaler = torch.amp.GradScaler(enabled=ampbool)
     criterion = nn.CrossEntropyLoss()
@@ -94,7 +94,7 @@ def train_net_enhanced(net,
     saved_confusion_matrices = []
     saved_log_files = []
 
-    # 创建训练数据记��字典
+    # 创建训练数据记录字典
     training_data = {
         "hyperparameters": {
             "batch_size": batch_size,
@@ -403,10 +403,10 @@ batch_size = 4
 # lr = 2.69e-4
 # lr = 8.125358e-4
 
-lr = 3.5e-5
+# lr = 3.5e-5
 # gamma = 0.98
 # lr = lr * (gamma ** 100)  # 计算经过100个epoch后的学习率
-
+lr = 5e-5
 # lr = 1e-6
 scale = 1
 train = 1
@@ -437,7 +437,7 @@ if __name__ == '__main__':
         device=device,
         epochs=30,          # 按论文设置
         batch_size=64,      # 按论文设置
-        learning_rate=3.5e-5,
+        learning_rate=5e-5,
         save_checkpoint=True,
         gradient_clipping=1.0
     )
