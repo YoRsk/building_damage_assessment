@@ -107,6 +107,11 @@ def train_net_enhanced(net,
         "training_history": []
     }
 
+    # 添加早停
+    patience = 10
+    best_val_score = float('-inf')
+    patience_counter = 0
+    
     for epoch in range(start_epoch, start_epoch + epochs):
         net.train()
         epoch_loss = 0
@@ -128,7 +133,12 @@ def train_net_enhanced(net,
                     if traintype == 'both':
                         masks_pred = net(preimage, postimage)
                         loss = criterion(masks_pred, post_masks)
-                        loss += floss(masks_pred, post_masks)
+                        # loss += floss(masks_pred, post_masks)
+                        loss += dice_loss(
+                            F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
+                            F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
+                            multiclass=True
+                        )
                     elif traintype == 'pre':
                         masks_pred = net(preimage)
                         loss = criterion(masks_pred, pre_masks)
@@ -284,8 +294,20 @@ def train_net_enhanced(net,
             except TypeError as e:
                 logger.error(f"Error saving training log: {e}")
 
+        # 在验证后添加早停检查
+        if val_score > best_val_score:
+            best_val_score = val_score
+            patience_counter = 0
+            # 保存最佳模型
+            torch.save(net.state_dict(), str(dir_checkpoint / 'best_model.pth'))
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f'Early stopping triggered after {epoch} epochs')
+                break
+
     # 最终测试集评估
-    test_score, test_class_scores, test_loss, test_f1_macro, test_f1_per_class, test_iou, test_confusion_matrix = evaluate(
+    test_score, test_class_scores, test_loss, test_f1_macro, test_f1_per_class, test_iou = evaluate(
         net, val_loader, device, ampbool, traintype
     )
     
@@ -322,7 +344,9 @@ def train_with_loqo(net,
     
     # 对每个四分之一进行交叉验证
     for fold in range(4):
-        print(f"Training fold {fold+1}/4")
+        logger.info(f"Starting fold {fold+1}/4")
+        logger.info(f"Training on quarters {[i for i in range(4) if i != fold]}")
+        logger.info(f"Testing on quarter {fold}")
         
         # 创建训练集（使用其他三个四分之一）
         train_dataset = EnhancedSatelliteDataset(
@@ -330,8 +354,8 @@ def train_with_loqo(net,
             pre_dir_mask=train_data['pre_mask'],
             post_dir_img=train_data['post_img'],
             post_dir_mask=train_data['post_mask'],
-            patch_size=1024,
-            stride=64,      # 实现960像素重叠
+            patch_size=1024,  # 修改为论文中的大小
+            stride=60,        # 调整stride以创建适当的重叠
             augment=True,
             quarter_idx=-fold-1
         )
@@ -342,21 +366,29 @@ def train_with_loqo(net,
             pre_dir_mask=train_data['pre_mask'],
             post_dir_img=train_data['post_img'],
             post_dir_mask=train_data['post_mask'],
-            patch_size=1024,
-            stride=1024,    # 测试时不需要重叠
+            patch_size=1024,  # 测试集也使用相同的patch size
+            stride=1024,      # 测试时不需要重叠
             augment=False,
             quarter_idx=fold
         )
         
         # 创建数据加载器
-        train_loader = DataLoader(train_dataset, 
-                                batch_size=batch_size, 
-                                shuffle=True, 
-                                num_workers=4,    # 增加工作进程
-                                pin_memory=True)  # 使用PIN_MEMORY加速
-        test_loader = DataLoader(test_dataset, 
-                               batch_size=1, 
-                               shuffle=False)
+        train_loader = DataLoader(
+            train_dataset, 
+            batch_size=batch_size, 
+            shuffle=True, 
+            num_workers=8,        # 增加工作进程数
+            pin_memory=True,      # 使用PIN_MEMORY加速
+            prefetch_factor=2,    # 预加载因子
+            persistent_workers=True  # 保持工作进程存活
+        )
+        test_loader = DataLoader(
+            test_dataset, 
+            batch_size=1,  
+            shuffle=False,
+            num_workers=4,
+            pin_memory=True
+        )
         
         # 训练当前fold
         fold_results = train_net_enhanced(
@@ -370,10 +402,25 @@ def train_with_loqo(net,
             save_checkpoint=save_checkpoint,
             gradient_clipping=gradient_clipping
         )
-        
+        logger.info(f"Completed fold {fold+1}/4 with results: {fold_results}")
         results.append(fold_results)
-        
+    
+    # 计算并记录所有fold的平均结果
+    avg_results = calculate_average_results(results)
+    logger.info(f"Average results across all folds: {avg_results}")
+    
     return results
+
+def calculate_average_results(results):
+    """计算所有fold的平均结果"""
+    avg_metrics = {}
+    for metric in results[0].keys():
+        avg_metrics[metric] = sum(fold[metric] for fold in results) / len(results)
+    return avg_metrics
+
+def visualize_fold_results(results):
+    """可视化每个fold的结果"""
+    # ... 添加结果可视化代码 ...
 
 # def calculate_loss(pred, target):
 #     """
@@ -420,7 +467,7 @@ gradclip = 1.0
 
 
 if __name__ == '__main__':
-    # task = Task.init(project_name="damage-assessment", task_name="enhanced_training_loqo")
+    #task = Task.init(project_name="damage-assessment", task_name="enhanced_training_loqo CEL+DiceLoss_windowssize256")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     net = SiamUNetConCVgg19()

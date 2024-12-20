@@ -105,7 +105,7 @@ class EnhancedSatelliteDataset(Dataset):
         else:
             self.transform = None
             
-        # 如果指定了quarter_idx，进行LOQO划分
+        # 如果指定quarter_idx，进行LOQO划分
         if quarter_idx is not None:
             self.quarter_idx = quarter_idx
             self.quarters_to_use = self._get_quarters_to_use(quarter_idx)
@@ -123,6 +123,19 @@ class EnhancedSatelliteDataset(Dataset):
         """
         kernel = np.ones((3,3), np.uint8)
         return cv2.dilate(mask, kernel, iterations=1)
+
+    def _split_to_quarters(self, image):
+        """将图像分为四个相等的quarters"""
+        h, w = image.shape[:2]
+        mid_h, mid_w = h//2, w//2
+        
+        quarters = {
+            0: image[0:mid_h, 0:mid_w],         # 左上
+            1: image[0:mid_h, mid_w:w],         # 右上
+            2: image[mid_h:h, 0:mid_w],         # 左下
+            3: image[mid_h:h, mid_w:w]          # 右下
+        }
+        return quarters
 
     def __getitem__(self, idx):
         pre_name, post_name = self.image_pairs[idx]
@@ -143,25 +156,19 @@ class EnhancedSatelliteDataset(Dataset):
         pre_mask = self._dilate_mask(pre_mask)
         post_mask = self._dilate_mask(post_mask)
         
-        # 分割图像为quarters
-        h, w = pre_img.shape[:2]
-        mid_h, mid_w = h//2, w//2
-        
-        quarters = {
-            0: (slice(0, mid_h), slice(0, mid_w)),      # 左上
-            1: (slice(0, mid_h), slice(mid_w, w)),      # 右上
-            2: (slice(mid_h, h), slice(0, mid_w)),      # 左下
-            3: (slice(mid_h, h), slice(mid_w, w))       # 右下
-        }
+        # 使用_split_to_quarters方法分割图像
+        pre_quarters = self._split_to_quarters(pre_img)
+        post_quarters = self._split_to_quarters(post_img)
+        pre_mask_quarters = self._split_to_quarters(pre_mask)
+        post_mask_quarters = self._split_to_quarters(post_mask)
         
         # 根据LOQO策略提取patches
         patches = []
         for q in self.quarters_to_use:
-            h_slice, w_slice = quarters[q]
-            pre_patch = pre_img[h_slice, w_slice]
-            post_patch = post_img[h_slice, w_slice]
-            pre_mask_patch = pre_mask[h_slice, w_slice]
-            post_mask_patch = post_mask[h_slice, w_slice]
+            pre_patch = pre_quarters[q]
+            post_patch = post_quarters[q]
+            pre_mask_patch = pre_mask_quarters[q]
+            post_mask_patch = post_mask_quarters[q]
             
             # 使用stride创建重叠的patches
             for i in range(0, pre_patch.shape[0] - self.patch_size + 1, self.stride):

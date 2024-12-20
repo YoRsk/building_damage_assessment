@@ -551,7 +551,7 @@ mem_bufs = sum([buf.nelement()*buf.element_size() for buf in net.buffers()])
 mem = mem_params + mem_bufs
 
 if __name__ == '__main__':
-    task = Task.init(project_name="damage-assessment", task_name="train SiameseUNetWithResnet50Encoder() 1104 CEL+FOCAL")
+    #task = Task.init(project_name="damage-assessment", task_name="train SiameseUNetWithResnet50Encoder() 1104 CEL+FOCAL")
 
     # task_id_to_resume = "432ff2e399124e32977edbeb13c7e30a"  # 替换为您想恢复的任务 ID
 
