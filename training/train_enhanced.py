@@ -76,19 +76,6 @@ def train_net_enhanced(net,
     
     writer = SummaryWriter(log_dir=str(log_dir))
 
-    # 设置优化器和学习率调度器
-    optimizer = optim.AdamW(net.parameters(), lr=learning_rate, weight_decay=5e-6)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-7)
-    grad_scaler = torch.amp.GradScaler(enabled=ampbool)
-    criterion = nn.CrossEntropyLoss()
-
-    # 初始化训练指标
-    train_accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=5, validate_args=False).to(device)
-    train_precision = torchmetrics.Precision(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
-    train_recall = torchmetrics.Recall(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
-    train_f1 = torchmetrics.F1Score(task='multiclass', num_classes=5, average='macro').to(device)
-    train_iou = JaccardIndex(task="multiclass", num_classes=5).to(device)
-
     # 用于跟踪已保存的文件
     saved_checkpoints = []
     saved_confusion_matrices = []
@@ -106,7 +93,18 @@ def train_net_enhanced(net,
         },
         "training_history": []
     }
+    # 设置优化器和学习率调度器
+    optimizer = optim.AdamW(net.parameters(), lr=learning_rate, weight_decay=5e-6)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-7)
+    grad_scaler = torch.amp.GradScaler(enabled=ampbool)
+    criterion = nn.CrossEntropyLoss()
 
+    # 初始化训练指标
+    train_accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=5, validate_args=False).to(device)
+    train_precision = torchmetrics.Precision(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
+    train_recall = torchmetrics.Recall(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
+    train_f1 = torchmetrics.F1Score(task='multiclass', num_classes=5, average='macro').to(device)
+    train_iou = JaccardIndex(task="multiclass", num_classes=5).to(device)
     # 添加早停
     patience = 10
     best_val_score = float('-inf')
@@ -115,11 +113,17 @@ def train_net_enhanced(net,
     for epoch in range(start_epoch, start_epoch + epochs):
         net.train()
         epoch_loss = 0
-        epoch_steps = 0 
+        epoch_steps = 0
         nancount = 0
         
         with tqdm(total=len(train_loader.dataset), desc=f'Epoch {epoch}/{epochs}', unit='img') as pbar:
             for batch in train_loader:
+                # optimizer.zero_grad(set_to_none=True)
+                # preimage, postimage, post_masks, pre_masks = batch['preimage'], batch['postimage'], batch['postmask'], batch['premask']
+                # preimage = preimage.to(device=device, dtype=torch.float32)
+                # postimage = postimage.to(device=device, dtype=torch.float32)
+                # post_masks = post_masks.to(device=device, dtype=torch.long)
+                # pre_masks = pre_masks.to(device=device, dtype=torch.long)
                 optimizer.zero_grad(set_to_none=True)
                 preimage, postimage, post_masks, pre_masks = batch['preimage'], batch['postimage'], batch['postmask'], batch['premask']
 
@@ -127,7 +131,6 @@ def train_net_enhanced(net,
                 postimage = postimage.to(device=device, dtype=torch.float32)
                 post_masks = post_masks.to(device=device, dtype=torch.long)
                 pre_masks = pre_masks.to(device=device, dtype=torch.long)
-                
                 with torch.amp.autocast('cuda', enabled=ampbool):
                     masks_pred = None
                     if traintype == 'both':
@@ -186,6 +189,10 @@ def train_net_enhanced(net,
                     'f1_score': train_f1.compute().item(),
                     'iou': train_iou.compute().item()
                 })
+
+        # 每个epoch结束后清理
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         # 计算训练指标
         train_acc = train_accuracy.compute()
@@ -332,8 +339,8 @@ def train_net_enhanced(net,
 def train_with_loqo(net,
                    device,
                    epochs: int = 30,          # 按论文修改为30
-                   batch_size: int = 64,      # 按论文修改为64
-                   learning_rate: float = 1e-5,
+                   batch_size: int = 8,      # 减小batch_size
+                   learning_rate: float = 1e-4,
                    save_checkpoint: bool = True,
                    gradient_clipping: float = 1.0):
     """
@@ -355,7 +362,7 @@ def train_with_loqo(net,
             post_dir_img=train_data['post_img'],
             post_dir_mask=train_data['post_mask'],
             patch_size=1024,  # 修改为论文中的大小
-            stride=60,        # 调整stride以创建适当的重叠
+            stride=64,        # 调整stride以创建适当的重叠
             augment=True,
             quarter_idx=-fold-1
         )
@@ -372,12 +379,17 @@ def train_with_loqo(net,
             quarter_idx=fold
         )
         
+        # 添加数据集大小检查
+        print(f"Fold {fold+1}:")
+        print(f"Training dataset size: {len(train_dataset)}")
+        print(f"Testing dataset size: {len(test_dataset)}")
+        
         # 创建数据加载器
         train_loader = DataLoader(
             train_dataset, 
-            batch_size=batch_size, 
+            batch_size=batch_size,
             shuffle=True, 
-            num_workers=8,        # 增加工作进程数
+            num_workers=4,        # 增加工作进程数
             pin_memory=True,      # 使用PIN_MEMORY加速
             prefetch_factor=2,    # 预加载因子
             persistent_workers=True  # 保持工作进程存活
@@ -389,6 +401,10 @@ def train_with_loqo(net,
             num_workers=4,
             pin_memory=True
         )
+        
+        # 添加batch数量检查
+        print(f"Number of training batches: {len(train_loader)}")
+        print(f"Number of testing batches: {len(test_loader)}")
         
         # 训练当前fold
         fold_results = train_net_enhanced(
@@ -468,6 +484,12 @@ gradclip = 1.0
 
 if __name__ == '__main__':
     #task = Task.init(project_name="damage-assessment", task_name="enhanced_training_loqo CEL+DiceLoss_windowssize256")
+    # 在开始前清理GPU内存
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        # 设置内存分配器
+        torch.cuda.set_per_process_memory_fraction(0.8)  # 使用80%的GPU内存
+        torch.backends.cudnn.benchmark = True  # 加速训练
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     net = SiamUNetConCVgg19()
@@ -483,8 +505,13 @@ if __name__ == '__main__':
         net=net,
         device=device,
         epochs=30,          # 按论文设置
-        batch_size=64,      # 按论文设置
-        learning_rate=5e-5,
+        batch_size=4,       # 减小batch_size
+        learning_rate=1e-4,
         save_checkpoint=True,
         gradient_clipping=1.0
     )
+
+    # 设置CUDA内存分配器
+    if torch.cuda.is_available():
+        torch.cuda.set_per_process_memory_fraction(0.8)  # 限制GPU内存使用为80%
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'

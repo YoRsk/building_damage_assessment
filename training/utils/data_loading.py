@@ -142,7 +142,7 @@ class SatelliteDataset(Dataset):
         premask = self.load(premask_file)
         preimg = self.load(preimg_file)
         assert postimg.size == postmask.size, \
-            f'Image and mask {name} should be the same size, but are {postimg.size} and {posmask.size}'
+            f'Image and mask {name} should be the same size, but are {postimg.size} and {postmask.size}'
         assert preimg.size == premask.size, \
             f'Image and mask {name} should be the same size, but are {preimg.size} and {premask.size}'
         prearray = [[1, 1], False, False, False]

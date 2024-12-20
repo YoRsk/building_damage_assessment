@@ -19,8 +19,8 @@ class EnhancedSatelliteDataset(Dataset):
                  pre_dir_mask,
                  post_dir_img,
                  post_dir_mask,
-                 patch_size=256,
-                 stride=16,
+                 patch_size=1024,
+                 stride=64,
                  augment=True,
                  quarter_idx=None):
         """
@@ -41,7 +41,10 @@ class EnhancedSatelliteDataset(Dataset):
         self.patch_size = patch_size
         self.stride = stride
         
-        # 只存储文件名配对
+        # 打印目录内容
+        print(f"Pre-image directory contents: {listdir(pre_dir_img)}")
+        print(f"Post-image directory contents: {listdir(post_dir_img)}")
+        
         pre_files = sorted([f for f in listdir(pre_dir_img) if not f.startswith('.')])
         post_files = set(listdir(post_dir_img))
         
@@ -109,10 +112,45 @@ class EnhancedSatelliteDataset(Dataset):
         if quarter_idx is not None:
             self.quarter_idx = quarter_idx
             self.quarters_to_use = self._get_quarters_to_use(quarter_idx)
+            
+        # 只存储patches的索引信息
+        self.patches = []
+        for img_idx, (pre_file, post_file) in enumerate(self.image_pairs):
+            # 获取图像大小而不加载整个图像
+            with Image.open(Path(pre_dir_img) / pre_file) as img:
+                h, w = img.size[1], img.size[0]
+            
+            mid_h, mid_w = h//2, w//2
+            quarters = {
+                0: (slice(0, mid_h), slice(0, mid_w)),
+                1: (slice(0, mid_h), slice(mid_w, w)),
+                2: (slice(mid_h, h), slice(0, mid_w)),
+                3: (slice(mid_h, h), slice(mid_w, w))
+            }
+            
+            # 为每个quarter生成patches的索引
+            for q in self.quarters_to_use:
+                h_slice, w_slice = quarters[q]
+                quarter_h = h_slice.stop - h_slice.start
+                quarter_w = w_slice.stop - w_slice.start
+                
+                for i in range(0, quarter_h - self.patch_size + 1, self.stride):
+                    for j in range(0, quarter_w - self.patch_size + 1, self.stride):
+                        self.patches.append({
+                            'img_idx': img_idx,
+                            'quarter': q,
+                            'x': j,
+                            'y': i
+                        })
+                        
+        print(f"Total patches to be generated: {len(self.patches)}")
 
     def _get_quarters_to_use(self, quarter_idx):
-        """确定使用哪些quarters"""
-        if quarter_idx < 0:  # 训练集：使用3个quarters
+        """确定使用哪些quarters
+        quarter_idx < 0: 训练集(使用3个quarters)
+        quarter_idx >= 0: 测试集(使用1个quarter)
+        """
+        if quarter_idx < 0:  
             return [i for i in range(4) if i != abs(quarter_idx) - 1]
         else:  # 测试集：使用1个quarter
             return [quarter_idx]
@@ -124,69 +162,57 @@ class EnhancedSatelliteDataset(Dataset):
         kernel = np.ones((3,3), np.uint8)
         return cv2.dilate(mask, kernel, iterations=1)
 
-    def _split_to_quarters(self, image):
-        """将图像分为四个相等的quarters"""
-        h, w = image.shape[:2]
-        mid_h, mid_w = h//2, w//2
-        
-        quarters = {
-            0: image[0:mid_h, 0:mid_w],         # 左上
-            1: image[0:mid_h, mid_w:w],         # 右上
-            2: image[mid_h:h, 0:mid_w],         # 左下
-            3: image[mid_h:h, mid_w:w]          # 右下
-        }
-        return quarters
-
     def __getitem__(self, idx):
-        pre_name, post_name = self.image_pairs[idx]
+        # 获取patch的索引信息
+        patch_info = self.patches[idx]
+        img_idx = patch_info['img_idx']
+        quarter = patch_info['quarter']
+        x, y = patch_info['x'], patch_info['y']
         
-        # 加载并确保是RGB模式
-        pre_img = Image.open(Path(self.pre_dir_img) / pre_name).convert('RGB')
-        post_img = Image.open(Path(self.post_dir_img) / post_name).convert('RGB')
-        pre_mask = Image.open(Path(self.pre_dir_mask) / pre_name).convert('L')  # 单通道掩码
-        post_mask = Image.open(Path(self.post_dir_mask) / post_name).convert('L')
+        # 获取文件名
+        pre_name, post_name = self.image_pairs[img_idx]
         
-        # 转换为numpy数组
-        pre_img = np.array(pre_img)
-        post_img = np.array(post_img)
-        pre_mask = np.array(pre_mask)
-        post_mask = np.array(post_mask)
+        # 只加载需要的quarter部分
+        with Image.open(Path(self.pre_dir_img) / pre_name) as img:
+            h, w = img.size[1], img.size[0]
         
-        # 对掩码进行膨胀处理
-        pre_mask = self._dilate_mask(pre_mask)
-        post_mask = self._dilate_mask(post_mask)
+        # # 对掩码进行膨胀处理
+        # pre_mask = self._dilate_mask(pre_mask)
+        # post_mask = self._dilate_mask(post_mask)
         
-        # 使用_split_to_quarters方法分割图像
-        pre_quarters = self._split_to_quarters(pre_img)
-        post_quarters = self._split_to_quarters(post_img)
-        pre_mask_quarters = self._split_to_quarters(pre_mask)
-        post_mask_quarters = self._split_to_quarters(post_mask)
+        # # 获取quarter的切片
+        # h, w = pre_img.shape[:2]
+        mid_h, mid_w = h//2, w//2
+        quarters = {
+            0: (slice(0, mid_h), slice(0, mid_w)),
+            1: (slice(0, mid_h), slice(mid_w, w)),
+            2: (slice(mid_h, h), slice(0, mid_w)),
+            3: (slice(mid_h, h), slice(mid_w, w))
+        }
+        h_slice, w_slice = quarters[quarter]
         
-        # 根据LOQO策略提取patches
-        patches = []
-        for q in self.quarters_to_use:
-            pre_patch = pre_quarters[q]
-            post_patch = post_quarters[q]
-            pre_mask_patch = pre_mask_quarters[q]
-            post_mask_patch = post_mask_quarters[q]
-            
-            # 使用stride创建重叠的patches
-            for i in range(0, pre_patch.shape[0] - self.patch_size + 1, self.stride):
-                for j in range(0, pre_patch.shape[1] - self.patch_size + 1, self.stride):
-                    patch = {
-                        'preimage': pre_patch[i:i+self.patch_size, j:j+self.patch_size],
-                        'postimage': post_patch[i:i+self.patch_size, j:j+self.patch_size],
-                        'premask': pre_mask_patch[i:i+self.patch_size, j:j+self.patch_size],
-                        'postmask': post_mask_patch[i:i+self.patch_size, j:j+self.patch_size]
-                    }
-                    patches.append(patch)
+        # 只读取需要的区域
+        pre_img = np.array(Image.open(Path(self.pre_dir_img) / pre_name).crop((
+            w_slice.start, h_slice.start, w_slice.stop, h_slice.stop
+        )).convert('RGB'))
+        post_img = np.array(Image.open(Path(self.post_dir_img) / post_name).crop((
+            w_slice.start, h_slice.start, w_slice.stop, h_slice.stop
+        )).convert('RGB'))
+        pre_mask = np.array(Image.open(Path(self.pre_dir_mask) / pre_name).crop((
+            w_slice.start, h_slice.start, w_slice.stop, h_slice.stop
+        )).convert('L'))
+        post_mask = np.array(Image.open(Path(self.post_dir_mask) / post_name).crop((
+            w_slice.start, h_slice.start, w_slice.stop, h_slice.stop
+        )).convert('L'))
         
-        # 训练时随机选择patch，测试时顺序返回
-        if self.quarter_idx < 0:
-            patch = random.choice(patches)
-        else:
-            patch = patches[idx % len(patches)]
-            
+        # 提取patch
+        patch = {
+            'preimage': pre_img[y:y+self.patch_size, x:x+self.patch_size],
+            'postimage': post_img[y:y+self.patch_size, x:x+self.patch_size],
+            'premask': pre_mask[y:y+self.patch_size, x:x+self.patch_size],
+            'postmask': post_mask[y:y+self.patch_size, x:x+self.patch_size]
+        }
+        
         # 应用数据增强
         if self.transform:
             transformed = self.transform(
@@ -208,4 +234,4 @@ class EnhancedSatelliteDataset(Dataset):
         }
 
     def __len__(self):
-        return len(self.image_pairs)
+        return len(self.patches)
