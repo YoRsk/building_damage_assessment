@@ -72,6 +72,10 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
 
                     pbar.update(postimage.shape[0])
                     pbar.set_postfix(**{'loss (batch)': loss.item()})
+
+                    # 定期清理缓存
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
             if (traintype == 'post'):
                 for batch in dataloader:
                     postimage, true_masks = batch['postimage'], batch['postmask']
@@ -101,6 +105,10 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
 
                     pbar.update(postimage.shape[0])
                     pbar.set_postfix(**{'loss (batch)': loss.item()})
+
+                    # 定期清理缓存
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
             epoch_loss += loss.item()
 
         net.train()

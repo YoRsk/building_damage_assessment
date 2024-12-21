@@ -510,7 +510,9 @@ def main():
     parser.add_argument('--ground-truth-mask', type=str, default='',
                       help='Path to the ground truth mask file (for evaluation)')
     args = parser.parse_args()
-    model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
+    model_path = './checkpoints/enhanced_v_1.0_lr_5.0e-05_20241221_171929/best_model.pth'
+    #model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
+
     #model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch52.pth'
     #好像下面这个RESNET的
     #model_path = './training/checkpoints/best0921.pth'
@@ -531,8 +533,8 @@ def main():
     #./images/75cm_Bilinear.tif
     #./images/75cm_Bilinear_20220921.tif
     # pre_image_path = './training/images/20210915_073716_84_2440_3B_Visual_clip.tif'
-    pre_image_path = './training/images/20210915_073716_84_2440_3B_Visual_clip.tif'
-    post_image_path = './training/images/20220921_080914_68_2254_3B_Visual_clip.tif'
+    pre_image_path = './training/images/Pre/Image512/Rubizhne_20210915_20220921_pre.tif'
+    post_image_path = './training/images/Post/Image512/Rubizhne_20210915_20220921_post.tif'
 
     # #my dataset2
     # pre_image_path = './images/before_Zhovteneyvi.jpeg'

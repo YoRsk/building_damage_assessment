@@ -20,7 +20,7 @@ class EnhancedSatelliteDataset(Dataset):
                  post_dir_img,
                  post_dir_mask,
                  patch_size=1024,
-                 stride=64,
+                 stride=60,
                  augment=True,
                  quarter_idx=None):
         """
@@ -41,12 +41,22 @@ class EnhancedSatelliteDataset(Dataset):
         self.patch_size = patch_size
         self.stride = stride
         
+        # 初始化图像缓存 - 移到最前面
+        self.image_cache = {}
+        self.max_cache_size = 4  # 最多缓存4张图像
+        
         # 打印目录内容
         print(f"Pre-image directory contents: {listdir(pre_dir_img)}")
         print(f"Post-image directory contents: {listdir(post_dir_img)}")
         
         pre_files = sorted([f for f in listdir(pre_dir_img) if not f.startswith('.')])
         post_files = set(listdir(post_dir_img))
+        
+        # 打印文件匹配过程
+        for pre_file in pre_files:
+            base_name = pre_file.replace('_pre.tif', '')
+            post_file = f"{base_name}_post.tif"
+            print(f"Checking pair: {pre_file} -> {post_file} : {'Found' if post_file in post_files else 'Not found'}")
         
         self.image_pairs = []
         for pre_file in pre_files:
@@ -112,15 +122,16 @@ class EnhancedSatelliteDataset(Dataset):
         if quarter_idx is not None:
             self.quarter_idx = quarter_idx
             self.quarters_to_use = self._get_quarters_to_use(quarter_idx)
-            
-        # 只存储patches的索引信息
+            print(f"Using quarters: {self.quarters_to_use} for {'training' if quarter_idx < 0 else 'testing'}")
+        
+        # 在初始化时就生成所有patches的索引
         self.patches = []
         for img_idx, (pre_file, post_file) in enumerate(self.image_pairs):
-            # 获取图像大小而不加载整个图像
-            with Image.open(Path(pre_dir_img) / pre_file) as img:
-                h, w = img.size[1], img.size[0]
-            
+            # 加载图像
+            pre_img = np.array(Image.open(Path(pre_dir_img) / pre_file).convert('RGB'))
+            h, w = pre_img.shape[:2]
             mid_h, mid_w = h//2, w//2
+            
             quarters = {
                 0: (slice(0, mid_h), slice(0, mid_w)),
                 1: (slice(0, mid_h), slice(mid_w, w)),
@@ -142,8 +153,8 @@ class EnhancedSatelliteDataset(Dataset):
                             'x': j,
                             'y': i
                         })
-                        
-        print(f"Total patches to be generated: {len(self.patches)}")
+            
+        print(f"Total patches generated: {len(self.patches)}")
 
     def _get_quarters_to_use(self, quarter_idx):
         """确定使用哪些quarters
@@ -162,26 +173,41 @@ class EnhancedSatelliteDataset(Dataset):
         kernel = np.ones((3,3), np.uint8)
         return cv2.dilate(mask, kernel, iterations=1)
 
+    def _load_and_cache_image(self, path, is_mask=False):
+        """带有大小限制的图像缓存"""
+        if path not in self.image_cache:
+            if len(self.image_cache) >= self.max_cache_size:
+                # 移除最早的缓存
+                self.image_cache.pop(next(iter(self.image_cache)))
+            if is_mask:
+                img = np.array(Image.open(path).convert('L'))
+            else:
+                img = np.array(Image.open(path).convert('RGB'))
+            self.image_cache[path] = img
+        return self.image_cache[path]
+
     def __getitem__(self, idx):
-        # 获取patch的索引信息
+        # 使用预计算的patch索引
         patch_info = self.patches[idx]
         img_idx = patch_info['img_idx']
         quarter = patch_info['quarter']
         x, y = patch_info['x'], patch_info['y']
         
-        # 获取文件名
+        # 获取原始图像对
         pre_name, post_name = self.image_pairs[img_idx]
         
-        # 只加载需要的quarter部分
-        with Image.open(Path(self.pre_dir_img) / pre_name) as img:
-            h, w = img.size[1], img.size[0]
+        # 使用缓存加载图像
+        pre_img = self._load_and_cache_image(Path(self.pre_dir_img) / pre_name)
+        post_img = self._load_and_cache_image(Path(self.post_dir_img) / post_name)
+        pre_mask = self._load_and_cache_image(Path(self.pre_dir_mask) / pre_name, is_mask=True)
+        post_mask = self._load_and_cache_image(Path(self.post_dir_mask) / post_name, is_mask=True)
         
-        # # 对掩码进行膨胀处理
-        # pre_mask = self._dilate_mask(pre_mask)
-        # post_mask = self._dilate_mask(post_mask)
+        # 对掩码进行膨胀处理
+        pre_mask = self._dilate_mask(pre_mask)
+        post_mask = self._dilate_mask(post_mask)
         
-        # # 获取quarter的切片
-        # h, w = pre_img.shape[:2]
+        # 获取quarter的切片
+        h, w = pre_img.shape[:2]
         mid_h, mid_w = h//2, w//2
         quarters = {
             0: (slice(0, mid_h), slice(0, mid_w)),
@@ -191,26 +217,12 @@ class EnhancedSatelliteDataset(Dataset):
         }
         h_slice, w_slice = quarters[quarter]
         
-        # 只读取需要的区域
-        pre_img = np.array(Image.open(Path(self.pre_dir_img) / pre_name).crop((
-            w_slice.start, h_slice.start, w_slice.stop, h_slice.stop
-        )).convert('RGB'))
-        post_img = np.array(Image.open(Path(self.post_dir_img) / post_name).crop((
-            w_slice.start, h_slice.start, w_slice.stop, h_slice.stop
-        )).convert('RGB'))
-        pre_mask = np.array(Image.open(Path(self.pre_dir_mask) / pre_name).crop((
-            w_slice.start, h_slice.start, w_slice.stop, h_slice.stop
-        )).convert('L'))
-        post_mask = np.array(Image.open(Path(self.post_dir_mask) / post_name).crop((
-            w_slice.start, h_slice.start, w_slice.stop, h_slice.stop
-        )).convert('L'))
-        
         # 提取patch
         patch = {
-            'preimage': pre_img[y:y+self.patch_size, x:x+self.patch_size],
-            'postimage': post_img[y:y+self.patch_size, x:x+self.patch_size],
-            'premask': pre_mask[y:y+self.patch_size, x:x+self.patch_size],
-            'postmask': post_mask[y:y+self.patch_size, x:x+self.patch_size]
+            'preimage': pre_img[h_slice][y:y+self.patch_size, x:x+self.patch_size],
+            'postimage': post_img[h_slice][y:y+self.patch_size, x:x+self.patch_size],
+            'premask': pre_mask[h_slice][y:y+self.patch_size, x:x+self.patch_size],
+            'postmask': post_mask[h_slice][y:y+self.patch_size, x:x+self.patch_size]
         }
         
         # 应用数据增强
@@ -234,4 +246,4 @@ class EnhancedSatelliteDataset(Dataset):
         }
 
     def __len__(self):
-        return len(self.patches)
+        return len(self.patches)  # 返回实际的patches数量
