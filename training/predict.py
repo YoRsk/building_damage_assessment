@@ -30,8 +30,9 @@ Image.MAX_IMAGE_PIXELS = None  # 禁用图像大小限制警告
 #     'DAMAGE_THRESHOLD': 0.3, # Damage assessment threshold
 # }
 # 3m resolution
+#previous 44.5
 CONFIG = {
-    'SMALL_BUILDING_THRESHOLD': 44.5,   # Pixel threshold for small buildings at 3m resolution
+    'SMALL_BUILDING_THRESHOLD': 20,   # Pixel threshold for small buildings at 3m resolution
     'WINDOW_SIZE': 512,    # Sliding window size
     'OVERLAP': 32,         # Overlap region size
     'CONTEXT_WINDOW': 64,  # Context window size
@@ -133,11 +134,11 @@ class BuildingAwarePredictor:
         # 确保非建筑区域为0
         processed_pred[building_mask == 0] = self.damage_classes["un-classified"]
         
-        # 先应用小型建筑物的特殊处理
-          # 先应用小型建筑物的特殊处理（只在building_mask内）
+        # 先应用小型建筑物的特殊处理（只在building_mask内）
         small_building_pred = self.process_with_building_attention(prediction_prob, building_mask)
         # 只更新building_mask内的区域
         processed_pred[building_mask > 0] = small_building_pred[building_mask > 0]
+        
         # 对所有建筑物（包括大型建筑）进行处理
         building_labels = measure.label(building_mask)
         print("\n开始后处理优化...")
@@ -308,7 +309,7 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
     # 打印类别统计
     unique, counts = np.unique(prediction, return_counts=True)
     total_pixels = prediction.size
-    print("\n类别统计:")
+    print("\nClass distribution:")
     class_names = ['Unclassified', 'No Damage', 'Minor Damage', 'Major Damage', 'Destroyed']
     for value, count in zip(unique, counts):
         percentage = (count / total_pixels) * 100
@@ -511,7 +512,9 @@ def main():
                       help='Path to the ground truth mask file (for evaluation)')
     args = parser.parse_args()
     model_path = './checkpoints/enhanced_v_1.0_lr_5.0e-05_20241221_171929/best_model.pth'
-    #model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
+    # 第二轮的，更不好了
+    # model_path = './checkpoints/enhanced_v_1.0_lr_5.0e-05_20241221_151300/checkpoint_epoch60.pth'
+    # model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
 
     #model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch52.pth'
     #好像下面这个RESNET的
@@ -523,18 +526,23 @@ def main():
     # mask_path = img_home_path + "/Post/Label512/"+ "hurricane-michael_00000400_post_disaster.png"
 
     #my dataset
+    # Volnovakha
+    pre_image_path = './training/images/Volnovakha_20210622_20220512_pre.tif'
+    post_image_path = './training/images/Volnovakha_20210622_20220512_post.tif'
+
+    # Rubizhne
+    # pre_image_path = './training/images/Pre/Image512/Rubizhne_20210915_20220921_pre.tif'
+    # post_image_path = './training/images/Post/Image512/Rubizhne_20210915_20220921_post.tif'
     #pre
     #./images/20210709_073742_79_2431_3B_Visual_clip.tif
     #./images/75cm_Bilinear_20210709.tif
+    # pre_image_path = './training/images/20210915_073716_84_2440_3B_Visual_clip.tif'
     #post
     #./images/20220713_075021_72_222f_3B_Visual_clip.tif
     #./images/20220709_072527_82_242b_3B_Visual_clip.tif
-
+    # 75cm
     #./images/75cm_Bilinear.tif
     #./images/75cm_Bilinear_20220921.tif
-    # pre_image_path = './training/images/20210915_073716_84_2440_3B_Visual_clip.tif'
-    pre_image_path = './training/images/Pre/Image512/Rubizhne_20210915_20220921_pre.tif'
-    post_image_path = './training/images/Post/Image512/Rubizhne_20210915_20220921_post.tif'
 
     # #my dataset2
     # pre_image_path = './images/before_Zhovteneyvi.jpeg'
