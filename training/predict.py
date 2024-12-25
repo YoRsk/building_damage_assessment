@@ -33,8 +33,8 @@ Image.MAX_IMAGE_PIXELS = None  # 禁用图像大小限制警告
 #previous 44.5
 CONFIG = {
     'SMALL_BUILDING_THRESHOLD': 20,   # Pixel threshold for small buildings at 3m resolution
-    'WINDOW_SIZE': 512,    # Sliding window size
-    'OVERLAP': 32,         # Overlap region size
+    'WINDOW_SIZE': 1024,    # Sliding window size
+    'OVERLAP': 64,         # Overlap region size
     'CONTEXT_WINDOW': 64,  # Context window size
     'DAMAGE_THRESHOLD': 0.3,# Damage assessment threshold
 }
@@ -134,10 +134,10 @@ class BuildingAwarePredictor:
         # 确保非建筑区域为0
         processed_pred[building_mask == 0] = self.damage_classes["un-classified"]
         
-        # 先应用小型建筑物的特殊处理（只在building_mask内）
-        small_building_pred = self.process_with_building_attention(prediction_prob, building_mask)
-        # 只更新building_mask内的区域
-        processed_pred[building_mask > 0] = small_building_pred[building_mask > 0]
+        # # 先应用小型建筑物的特殊处理（只在building_mask内）
+        # small_building_pred = self.process_with_building_attention(prediction_prob, building_mask)
+        # # 只更新building_mask内的区域
+        # processed_pred[building_mask > 0] = small_building_pred[building_mask > 0]
         
         # 对所有建筑物（包括大型建筑）进行处理
         building_labels = measure.label(building_mask)
@@ -511,8 +511,11 @@ def main():
     parser.add_argument('--ground-truth-mask', type=str, default='',
                       help='Path to the ground truth mask file (for evaluation)')
     args = parser.parse_args()
-    model_path = './checkpoints/enhanced_v_1.0_lr_5.0e-05_20241221_171929/best_model.pth'
-    # 第二轮的，更不好了
+    # version 2 loss only on building area
+    # model_path = './checkpoints/enhanced_v_1.0_lr_5.0e-05_20241224_212710/checkpoint_epoch25.pth'
+    # version 1.4
+    model_path = './checkpoints/saved_14_enhanced_v_1.0_lr_5.0e-05_20241221_171929/best_model.pth'
+    # version 1.2
     # model_path = './checkpoints/enhanced_v_1.0_lr_5.0e-05_20241221_151300/checkpoint_epoch60.pth'
     # model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
 
@@ -527,6 +530,7 @@ def main():
 
     #my dataset
     # Volnovakha
+    # pre_image_path = './training/images/Volnovakha_20210513.tif'
     pre_image_path = './training/images/Volnovakha_20210622_20220512_pre.tif'
     post_image_path = './training/images/Volnovakha_20210622_20220512_post.tif'
 

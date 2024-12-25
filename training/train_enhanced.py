@@ -49,6 +49,28 @@ train_data = {
     'post_mask': f"{img_home_path}/Post/Label512/"
 }
 
+def calculate_masked_loss(pred, target):
+    """
+    仅在有效标注的像素上计算交叉熵损失
+    Args:
+        pred: 模型预测 [B, C, H, W]
+        target: 真实标签 [B, H, W]，其中1-4表示不同的建筑物损伤等级
+    """
+    # 创建掩码，标识有效的（已标注）像素
+    valid_pixels = target >= 1  # 值大于等于1的像素是有效的建筑物标注
+    
+    if valid_pixels.sum() == 0:
+        return torch.tensor(0.0).to(pred.device)
+    
+    # 只在有效像素上计算损失
+    loss = F.cross_entropy(
+        pred.permute(0, 2, 3, 1)[valid_pixels],  # [N, C]
+        target[valid_pixels],                     # [N]
+        reduction='mean'
+    )
+    
+    return loss
+
 def train_net_enhanced(net,
                       device,
                       epochs: int = 30,
@@ -132,13 +154,22 @@ def train_net_enhanced(net,
                     masks_pred = None
                     if traintype == 'both':
                         masks_pred = net(preimage, postimage)
-                        loss = criterion(masks_pred, post_masks)
-                        # loss += floss(masks_pred, post_masks)
-                        loss += dice_loss(
-                            F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
-                            F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
+                        # loss = criterion(masks_pred, post_masks)
+                        # # loss += floss(masks_pred, post_masks)
+                        # loss += dice_loss(
+                        #     F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
+                        #     F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],                        
+                        # 只在有效建筑物区域计算损失
+                        valid_pixels = post_masks >= 1
+                        ce_loss = calculate_masked_loss(masks_pred, post_masks)
+                        
+                        # Dice loss也只在有效建筑物区域计算
+                        dice = dice_loss(
+                            F.softmax(masks_pred, dim=1).float()[:, 1:, ...],  # 排除背景类
+                            F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],  # 排除背景类
                             multiclass=True
                         )
+                        loss = ce_loss + dice
                     elif traintype == 'pre':
                         masks_pred = net(preimage)
                         loss = criterion(masks_pred, pre_masks)
@@ -149,12 +180,21 @@ def train_net_enhanced(net,
                         )
                     elif traintype == 'post':
                         masks_pred = net(postimage)
-                        loss = criterion(masks_pred, post_masks)
-                        loss += dice_loss(
-                            F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
-                            F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
+                        # loss = criterion(masks_pred, post_masks)
+                        # loss += dice_loss(
+                        #     F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
+                        #     F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],                        
+                        # 只在有效建筑物区域计算损失
+                        valid_pixels = post_masks >= 1
+                        ce_loss = calculate_masked_loss(masks_pred, post_masks)
+                        
+                        # Dice loss也只在有效建筑物区域计算
+                        dice = dice_loss(
+                            F.softmax(masks_pred, dim=1).float()[:, 1:, ...],  # 排除背景类
+                            F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],  # 排除背景类
                             multiclass=True
                         )
+                        loss = ce_loss + dice
 
                 grad_scaler.scale(loss).backward()
                 torch.nn.utils.clip_grad_norm_(net.parameters(), gradient_clipping)
