@@ -33,10 +33,10 @@ Image.MAX_IMAGE_PIXELS = None  # 禁用图像大小限制警告
 #previous 44.5
 CONFIG = {
     'SMALL_BUILDING_THRESHOLD': 20,   # Pixel threshold for small buildings at 3m resolution
-    'WINDOW_SIZE': 1024,    # Sliding window size
-    'OVERLAP': 64,         # Overlap region size
+    'WINDOW_SIZE': 512,    # Sliding window size
+    'OVERLAP': 32,         # Overlap region size
     'CONTEXT_WINDOW': 64,  # Context window size
-    'DAMAGE_THRESHOLD': 0.3,# Damage assessment threshold
+    'DAMAGE_THRESHOLD': 2,# Damage assessment threshold
 }
 def load_model(model_path):
     #model = SiameseUNetWithResnet50Encoder()
@@ -119,12 +119,13 @@ class BuildingAwarePredictor:
                         
         return enhanced_pred
 
-    def post_process(self, prediction_prob, building_mask):
+    def post_process(self, prediction_prob, building_mask, use_damage_threshold=False):
         """
         后处理函数，提高对损坏类别的检测敏感度
         Args:
             prediction_prob: softmax输出的概率分布 (H, W, 5)
             building_mask: 建筑物掩码
+            use_damage_threshold: 是否使用damage threshold增强
         Returns:
             处理后的预测结果
         """
@@ -141,19 +142,45 @@ class BuildingAwarePredictor:
         
         # 对所有建筑物（包括大型建筑）进行处理
         building_labels = measure.label(building_mask)
-        print("\n开始后处理优化...")
-        for building_id in tqdm(range(1, building_labels.max() + 1), desc="处理建筑物"):
+        print("\npost process...")
+        for building_id in tqdm(range(1, building_labels.max() + 1), desc="deal with building"):
             building_mask = building_labels == building_id
-            building_pred = processed_pred[building_mask]
-            damage_levels = building_pred[building_pred > 0]
             
-            if len(damage_levels) > 0:
-                # 找出最常见的损坏等级
-                main_damage = np.bincount(damage_levels.astype(int)).argmax()
-                # 将整个建筑物设置为该损坏等级
-                processed_pred[building_mask] = main_damage
+            if use_damage_threshold:
+                # 获取当前建筑物的概率分布
+                building_probs = prediction_prob[building_mask]
+                
+                # 对损伤类别进行加权（每个等级使用不同阈值）
+                weighted_probs = building_probs.copy()
+                # minor damage
+                weighted_probs[:, 2] *= self.config['DAMAGE_THRESHOLD']
+                # major damage
+                weighted_probs[:, 3] *= self.config['DAMAGE_THRESHOLD'] * 1.5
+                # destroyed
+                weighted_probs[:, 4] *= self.config['DAMAGE_THRESHOLD'] * 2.0
+                
+                # 对每个像素点分别取最大概率的类别
+                pixel_pred = np.argmax(weighted_probs, axis=1)
+                # pixel_pred[pixel_pred == 0] = self.damage_classes["un-classified"]
+                damage_levels = pixel_pred[pixel_pred > 0]
+                # 统计整个建筑物内最常见的类别
+                if len(damage_levels) > 0:
+                    main_damage = np.bincount(damage_levels).argmax()
+                else:
+                    main_damage = self.damage_classes["no-damage"]
             else:
-                processed_pred[building_mask] = self.damage_classes["no-damage"]
+                # 使用原来的处理方式
+                building_pred = processed_pred[building_mask]
+                damage_levels = building_pred[building_pred > 0]
+                
+                if len(damage_levels) > 0:
+                    # 找出最常见的损坏等级
+                    main_damage = np.bincount(damage_levels.astype(int)).argmax()
+                else:
+                    main_damage = self.damage_classes["no-damage"]
+            
+            # 将整个建筑物设置为该损坏等级
+            processed_pred[building_mask] = main_damage
         
         # 验证输出
         assert processed_pred.min() >= 0 and processed_pred.max() <= 4, "Invalid prediction values"
@@ -514,10 +541,11 @@ def main():
     # version 2 loss only on building area
     # model_path = './checkpoints/enhanced_v_1.0_lr_5.0e-05_20241224_212710/checkpoint_epoch25.pth'
     # version 1.4
-    model_path = './checkpoints/saved_14_enhanced_v_1.0_lr_5.0e-05_20241221_171929/best_model.pth'
+    # model_path = './checkpoints/saved_14_enhanced_v_1.0_lr_5.0e-05_20241221_171929/best_model.pth'
     # version 1.2
     # model_path = './checkpoints/enhanced_v_1.0_lr_5.0e-05_20241221_151300/checkpoint_epoch60.pth'
-    # model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
+
+    model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
 
     #model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch52.pth'
     #好像下面这个RESNET的
@@ -611,7 +639,7 @@ def main():
         print(f'Precision: {metrics[3]:.4f}')
         print(f'Recall: {metrics[4]:.4f}')
         print("\nEach class f1 score:")
-        class_names_5 = ['Unclassified', 'No Damage', 'Minor Damage', 'Major Damage', 'Destroyed']
+        class_names_5 = ['Background', 'No Damage', 'Minor Damage', 'Major Damage', 'Destroyed']
         for i, f1 in enumerate(metrics[5]):
             print(f'{class_names_5[i]}: {f1:.4f}')
         print("\n binary-classes (undamaged vs damaged):")
