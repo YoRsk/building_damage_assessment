@@ -23,6 +23,7 @@ from torch.utils.data import DataLoader, random_split
 from utils.tensor_encoder import TensorEncoder
 from clearml import Task
 from torchmetrics import JaccardIndex
+from torchmetrics import F1Score
 closs = nn.CrossEntropyLoss()
 
 floss = FocalLoss(mode = 'multiclass',
@@ -80,14 +81,41 @@ def train_net_enhanced(net,
     optimizer = optim.AdamW(net.parameters(), lr=learning_rate, weight_decay=5e-6)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-7)
     grad_scaler = torch.amp.GradScaler(enabled=ampbool)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(ignore_index=0)
 
-    # 初始化训练指标
-    train_accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=5, validate_args=False).to(device)
-    train_precision = torchmetrics.Precision(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
-    train_recall = torchmetrics.Recall(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
-    train_f1 = torchmetrics.F1Score(task='multiclass', num_classes=5, average='macro').to(device)
-    train_iou = JaccardIndex(task="multiclass", num_classes=5).to(device)
+    # 初始化训练指标，都忽略背景类
+    train_accuracy = torchmetrics.Accuracy(
+        task='multiclass', 
+        num_classes=5, 
+        ignore_index=0
+    ).to(device)
+    
+    train_precision = torchmetrics.Precision(
+        task='multiclass', 
+        num_classes=5, 
+        average='macro',
+        ignore_index=0
+    ).to(device)
+    
+    train_recall = torchmetrics.Recall(
+        task='multiclass', 
+        num_classes=5, 
+        average='macro',
+        ignore_index=0
+    ).to(device)
+    
+    train_f1 = torchmetrics.F1Score(
+        task='multiclass', 
+        num_classes=5, 
+        average='macro',
+        ignore_index=0
+    ).to(device)
+    
+    train_iou = JaccardIndex(
+        task="multiclass", 
+        num_classes=5,
+        ignore_index=0
+    ).to(device)
 
     # 用于跟踪已保存的文件
     saved_checkpoints = []
