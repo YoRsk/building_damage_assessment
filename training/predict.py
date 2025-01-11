@@ -33,7 +33,8 @@ Image.MAX_IMAGE_PIXELS = None  # 禁用图像大小限制警告
 #previous 44.5
 CONFIG = {
     'SMALL_BUILDING_THRESHOLD': 20,   # Pixel threshold for small buildings at 3m resolution
-    'WINDOW_SIZE': 512,    # Sliding window size
+    #'WINDOW_SIZE': 512,    # Sliding window size
+    'WINDOW_SIZE': 20000, # means no sliding window and no post-processing
     'OVERLAP': 32,         # Overlap region size
     'CONTEXT_WINDOW': 64,  # Context window size
     'DAMAGE_THRESHOLD': 2,# Damage assessment threshold
@@ -150,14 +151,14 @@ class BuildingAwarePredictor:
                 # 获取当前建筑物的概率分布
                 building_probs = prediction_prob[building_mask]
                 
-                # 对损伤类别进行加权（每个等级使用不同阈值）
-                weighted_probs = building_probs.copy()
-                # minor damage
-                weighted_probs[:, 2] *= self.config['DAMAGE_THRESHOLD']
-                # major damage
-                weighted_probs[:, 3] *= self.config['DAMAGE_THRESHOLD'] * 1.5
-                # destroyed
-                weighted_probs[:, 4] *= self.config['DAMAGE_THRESHOLD'] * 2.0
+                # # 对损伤类别进行加权（每个等级使用不同阈值）
+                # weighted_probs = building_probs.copy()
+                # # minor damage
+                # weighted_probs[:, 2] *= self.config['DAMAGE_THRESHOLD']
+                # # major damage
+                # weighted_probs[:, 3] *= self.config['DAMAGE_THRESHOLD'] * 1.5
+                # # destroyed
+                # weighted_probs[:, 4] *= self.config['DAMAGE_THRESHOLD'] * 2.0
                 
                 # 对每个像素点分别取最大概率的类别
                 pixel_pred = np.argmax(weighted_probs, axis=1)
@@ -285,10 +286,22 @@ def predict_image(model, pre_image, post_image, building_mask=None, device='cuda
     model.to(device)
     model.eval()
     
+    # 获取原始尺寸
+    original_size = pre_image.size
+    
+    # 计算能被32整除的新尺寸（因为VGG19网络有5次下采样，2^5=32）
+    new_width = ((original_size[0] + 31) // 32) * 32
+    new_height = ((original_size[1] + 31) // 32) * 32
+    
+    # 调整图像尺寸
+    pre_image = pre_image.resize((new_width, new_height), Image.Resampling.BILINEAR)
+    post_image = post_image.resize((new_width, new_height), Image.Resampling.BILINEAR)
+    
     pre_tensor = preprocess_image(pre_image, is_mask=False)
     post_tensor = preprocess_image(post_image, is_mask=False)
     
     if building_mask is not None:
+        building_mask = building_mask.resize((new_width, new_height), Image.Resampling.NEAREST)
         building_mask = preprocess_image(building_mask, is_mask=True)
     
     pre_tensor = pre_tensor.unsqueeze(0).to(device)
@@ -302,6 +315,18 @@ def predict_image(model, pre_image, post_image, building_mask=None, device='cuda
         pred_prob = F.softmax(output, dim=1)
         # 转换为numpy数组，调整维度顺序 from (C, H, W) to (H, W, C)
         pred_prob = pred_prob.squeeze().permute(1, 2, 0).cpu().numpy()
+        
+        # 调整回原始尺寸
+        if pred_prob.shape[:2] != (original_size[1], original_size[0]):
+            pred_prob_resized = np.zeros((original_size[1], original_size[0], pred_prob.shape[2]))
+            for i in range(pred_prob.shape[2]):
+                pred_prob_resized[:,:,i] = np.array(
+                    Image.fromarray(pred_prob[:,:,i]).resize(
+                        (original_size[0], original_size[1]), 
+                        Image.Resampling.BILINEAR
+                    )
+                )
+            pred_prob = pred_prob_resized
         
         return pred_prob
 
@@ -327,11 +352,6 @@ def preprocess_image(image, is_mask=False):
 def visualize_prediction(image, mask, prediction, show_original_unclassified=False):
     """
     内存优化的可视化函数，保持原始分辨率
-    Args:
-        image: 原始图像数组
-        mask: Ground truth掩码数组（或None）
-        prediction: 预测数组
-        show_original_unclassified: 是否在未分类区域显示原始图像
     """
     # 打印类别统计
     unique, counts = np.unique(prediction, return_counts=True)
@@ -349,9 +369,10 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
     bounds = np.arange(n_classes + 1)
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
-    # 创建图形
-    fig = plt.figure(figsize=(15, 5))
-    gs = plt.GridSpec(1, 3, figure=fig, wspace=0.3)
+    # 创建更大的图形，并调整子图之间的间距
+    fig = plt.figure(figsize=(24, 8))  # 增加整体图形大小
+    # 移除 height_ratios 参数，使用更小的 wspace
+    gs = plt.GridSpec(1, 3, figure=fig, wspace=0.1)  
 
     # 设置显示参数
     plt.rcParams['image.interpolation'] = 'nearest'
@@ -364,13 +385,13 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
 
     # 显示原始图像
     ax1.imshow(image)
-    ax1.set_title('Original Image')
+    ax1.set_title('Original Image', pad=20)  # 增加标题和图像之间的间距
     ax1.axis('off')
 
     # 显示ground truth（如果有）
     if mask is not None:
         ax2.imshow(mask, cmap=cmap, norm=norm)
-        ax2.set_title('Ground Truth')
+        ax2.set_title('Ground Truth', pad=20)
     else:
         ax2.set_visible(False)
     ax2.axis('off')
@@ -392,33 +413,39 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
         ax3.imshow(image)
         # 叠加预测结果
         ax3.imshow(overlay, alpha=0.5)
+        ax3.set_title('Prediction', pad=20)
     else:
         # 直接显示预测结果
         im3 = ax3.imshow(prediction, cmap=cmap, norm=norm)
-
-    ax3.set_title('Prediction')
+        ax3.set_title('Prediction', pad=20)
     ax3.axis('off')
 
-    # 添加颜色条
+    # 添加颜色条，调整位置和大小
     if show_original_unclassified:
         dummy_im = ax3.imshow(prediction, cmap=cmap, norm=norm, visible=False)
         cbar = fig.colorbar(dummy_im, ax=ax3, orientation='horizontal', 
-                          fraction=0.046, pad=0.04)
+                          fraction=0.046, pad=0.08)
     else:
         cbar = fig.colorbar(im3, ax=ax3, orientation='horizontal', 
-                          fraction=0.046, pad=0.04)
+                          fraction=0.046, pad=0.08)
 
     cbar.set_ticks(bounds[:-1] + 0.5)
     cbar.set_ticklabels(class_names)
+    cbar.ax.tick_params(labelsize=8)
 
-    # 设置纵横比
-    for ax in [ax2, ax3]:
+    # 设置所有子图的纵横比相同并确保填充整个可用空间
+    for ax in [ax1, ax2, ax3]:
         if ax.get_visible():
             ax.set_aspect('equal', adjustable='box')
+            # 移除所有边距
+            ax.set_position(ax.get_position().expanded(1.0, 1.0))
+
+    # 移除 tight_layout，改用手动调整
+    plt.subplots_adjust(top=0.95, bottom=0.15, left=0.02, right=0.98)
 
     # 确保像素级显示
     def on_draw(event):
-        for ax in [ax2, ax3]:
+        for ax in [ax1, ax2, ax3]:
             if ax.get_visible():
                 ax.images[0].set_interpolation('nearest')
 
@@ -434,15 +461,21 @@ def calculate_metrics(prediction, ground_truth):
     prediction_tensor = torch.from_numpy(prediction).long().unsqueeze(0).to(device)
     ground_truth_tensor = torch.from_numpy(ground_truth).long().unsqueeze(0).to(device)
     
-    # 初始化5分类metrics
-    accuracy_5 = torchmetrics.Accuracy(task='multiclass', num_classes=5, validate_args=False).to(device)
-    precision_5 = torchmetrics.Precision(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
-    recall_5 = torchmetrics.Recall(task='multiclass', num_classes=5, average='macro', validate_args=False).to(device)
-    f1_score_5 = torchmetrics.F1Score(task='multiclass', num_classes=5, average='macro').to(device)
-    f1_score_5_per_class = torchmetrics.F1Score(task='multiclass', num_classes=5, average=None).to(device)
-    iou_5 = JaccardIndex(task="multiclass", num_classes=5).to(device)
+    # 初始化metrics（排除背景类）
+    accuracy_5 = torchmetrics.Accuracy(task='multiclass', num_classes=5, 
+                                     ignore_index=0, validate_args=False).to(device)
+    precision_5 = torchmetrics.Precision(task='multiclass', num_classes=5, 
+                                       ignore_index=0, average='macro', validate_args=False).to(device)
+    recall_5 = torchmetrics.Recall(task='multiclass', num_classes=5, 
+                                  ignore_index=0, average='macro', validate_args=False).to(device)
+    f1_score_5 = torchmetrics.F1Score(task='multiclass', num_classes=5, 
+                                     ignore_index=0, average='macro').to(device)
+    f1_score_5_per_class = torchmetrics.F1Score(task='multiclass', num_classes=5, 
+                                               ignore_index=0, average=None).to(device)
+    iou_5 = JaccardIndex(task="multiclass", num_classes=5, 
+                        ignore_index=0).to(device)
     
-    # 更新5分类metrics
+    # 更新metrics
     accuracy_5.update(prediction_tensor, ground_truth_tensor)
     precision_5.update(prediction_tensor, ground_truth_tensor)
     recall_5.update(prediction_tensor, ground_truth_tensor)
@@ -450,7 +483,7 @@ def calculate_metrics(prediction, ground_truth):
     f1_score_5_per_class.update(prediction_tensor, ground_truth_tensor)
     iou_5.update(prediction_tensor, ground_truth_tensor)
     
-    # 计算5分类结果
+    # 计算结果
     acc_5 = accuracy_5.compute()
     prec_5 = precision_5.compute()
     rec_5 = recall_5.compute()
@@ -470,13 +503,19 @@ def calculate_metrics(prediction, ground_truth):
     binary_prediction_tensor = torch.from_numpy(binary_prediction).long().unsqueeze(0).to(device)
     binary_ground_truth_tensor = torch.from_numpy(binary_ground_truth).long().unsqueeze(0).to(device)
     
-    # 初始化二分类metrics
-    accuracy_2 = torchmetrics.Accuracy(task='multiclass', num_classes=3, validate_args=False).to(device)
-    precision_2 = torchmetrics.Precision(task='multiclass', num_classes=3, average='macro', validate_args=False).to(device)
-    recall_2 = torchmetrics.Recall(task='multiclass', num_classes=3, average='macro', validate_args=False).to(device)
-    f1_score_2 = torchmetrics.F1Score(task='multiclass', num_classes=3, average='macro').to(device)
-    f1_score_2_per_class = torchmetrics.F1Score(task='multiclass', num_classes=3, average=None).to(device)
-    iou_2 = JaccardIndex(task="multiclass", num_classes=3).to(device)
+    # 初始化二分类metrics（排除背景类）
+    accuracy_2 = torchmetrics.Accuracy(task='multiclass', num_classes=3, 
+                                     ignore_index=0, validate_args=False).to(device)
+    precision_2 = torchmetrics.Precision(task='multiclass', num_classes=3, 
+                                       ignore_index=0, average='macro', validate_args=False).to(device)
+    recall_2 = torchmetrics.Recall(task='multiclass', num_classes=3, 
+                                  ignore_index=0, average='macro', validate_args=False).to(device)
+    f1_score_2 = torchmetrics.F1Score(task='multiclass', num_classes=3, 
+                                     ignore_index=0, average='macro').to(device)
+    f1_score_2_per_class = torchmetrics.F1Score(task='multiclass', num_classes=3, 
+                                               ignore_index=0, average=None).to(device)
+    iou_2 = JaccardIndex(task="multiclass", num_classes=3, 
+                        ignore_index=0).to(device)
     
     # 更新二分类metrics
     accuracy_2.update(binary_prediction_tensor, binary_ground_truth_tensor)
@@ -538,13 +577,15 @@ def main():
     parser.add_argument('--ground-truth-mask', type=str, default='',
                       help='Path to the ground truth mask file (for evaluation)')
     args = parser.parse_args()
+    # version 3.4 ONLY ON BUILDING AREA
+    # model_path = './checkpoints/saved_34_enhanced_v_1.0_lr_5.0e-05_20241226_165039/best_model.pth'
     # version 2 loss only on building area
-    # model_path = './checkpoints/enhanced_v_1.0_lr_5.0e-05_20241224_212710/checkpoint_epoch25.pth'
-    # version 1.4
+    # model_path = './checkpoints/saved_24_enhanced_v_1.0_lr_5.0e-05_20241224_212710/checkpoint_epoch25.pth'
+    # version 1.4 after retrain
     # model_path = './checkpoints/saved_14_enhanced_v_1.0_lr_5.0e-05_20241221_171929/best_model.pth'
-    # version 1.2
-    # model_path = './checkpoints/enhanced_v_1.0_lr_5.0e-05_20241221_151300/checkpoint_epoch60.pth'
-
+    # version 1.2 after retrain
+    # model_path = './checkpoints/saved_12_enhanced_v_1.0_lr_5.0e-05_20241221_151300/checkpoint_epoch60.pth'
+    # version 0 before retrain
     model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
 
     #model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch52.pth'
@@ -619,8 +660,16 @@ def main():
             device=device
         )
     else:
-        prediction = predict_image(model, pre_image, post_image, 
-                                 building_mask, device)
+        # without sliding window and any post-processing
+        pred_prob = predict_image(model, pre_image, post_image, 
+                                building_mask, device)
+        # 将概率转换为类别标签
+        prediction = np.argmax(pred_prob, axis=2)
+        
+        # 如果有建筑物掩码，将非建筑区域设为0
+        if building_mask is not None:
+            building_mask_np = np.array(building_mask)
+            prediction[building_mask_np == 0] = 0
     
     # 评估
     if ground_truth_mask is not None:
@@ -630,7 +679,7 @@ def main():
             Image.NEAREST
         )
         ground_truth_np = np.array(ground_truth_mask)
-        metrics  = calculate_metrics(prediction, ground_truth_np)
+        metrics = calculate_metrics(prediction, ground_truth_np)
                 
         print("\nMulti-classes evaluation result:")
         print(f'Accuracy: {metrics[0]:.4f}')
