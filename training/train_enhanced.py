@@ -133,12 +133,12 @@ def train_net_enhanced(net,
                     if traintype == 'both':
                         masks_pred = net(preimage, postimage)
                         loss = criterion(masks_pred, post_masks)
-                        # loss += floss(masks_pred, post_masks)
-                        loss += dice_loss(
-                            F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
-                            F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
-                            multiclass=True
-                        )
+                        loss += floss(masks_pred, post_masks)
+                        # loss += dice_loss(
+                        #     F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
+                        #     F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
+                        #     multiclass=True
+                        # )
                     elif traintype == 'pre':
                         masks_pred = net(preimage)
                         loss = criterion(masks_pred, pre_masks)
@@ -506,7 +506,7 @@ gradclip = 1.0
 
 epochs=60
 batch_size=4      # 使用较小的batch_size
-learning_rate=1e-6
+learning_rate=5e-5
 save_checkpoint=True
 gradient_clipping=1.0
 if __name__ == '__main__':

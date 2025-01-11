@@ -33,8 +33,8 @@ Image.MAX_IMAGE_PIXELS = None  # 禁用图像大小限制警告
 #previous 44.5
 CONFIG = {
     'SMALL_BUILDING_THRESHOLD': 20,   # Pixel threshold for small buildings at 3m resolution
-    #'WINDOW_SIZE': 512,    # Sliding window size
-    'WINDOW_SIZE': 20000, # means no sliding window and no post-processing
+    'WINDOW_SIZE': 512,    # Sliding window size
+    #'WINDOW_SIZE': 20000, # means no sliding window and no post-processing
     'OVERLAP': 32,         # Overlap region size
     'CONTEXT_WINDOW': 64,  # Context window size
     'DAMAGE_THRESHOLD': 2,# Damage assessment threshold
@@ -577,6 +577,8 @@ def main():
     parser.add_argument('--ground-truth-mask', type=str, default='',
                       help='Path to the ground truth mask file (for evaluation)')
     args = parser.parse_args()
+    # version 4.4 change lr to 1e-6 from 1.x version
+    # model_path = './checkpoints/enhanced_v_1.0_lr_1.0e-06_20241226_210303/checkpoint_epoch24.pth'
     # version 3.4 ONLY ON BUILDING AREA
     # model_path = './checkpoints/saved_34_enhanced_v_1.0_lr_5.0e-05_20241226_165039/best_model.pth'
     # version 2 loss only on building area
@@ -586,11 +588,11 @@ def main():
     # version 1.2 after retrain
     # model_path = './checkpoints/saved_12_enhanced_v_1.0_lr_5.0e-05_20241221_151300/checkpoint_epoch60.pth'
     # version 0 before retrain
-    model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
+    # model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
 
     #model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch52.pth'
     #好像下面这个RESNET的
-    #model_path = './training/checkpoints/best0921.pth'
+    # model_path = './training/checkpoints/best0921.pth'
     # # xbd
     # img_home_path = "C:/Users/xiao/peng/xbd/Dataset/Validation"
     # pre_image_path = img_home_path + "/Pre/Image512/"+ "hurricane-michael_00000400_pre_disaster.png"

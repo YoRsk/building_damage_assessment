@@ -5,6 +5,14 @@ from utils.dice_score import multiclass_dice_coeff, dice_coeff, dice_loss
 import torch.nn as nn
 from torchmetrics import F1Score, JaccardIndex, ConfusionMatrix
 from torchmetrics import AUROC
+from segmentation_models_pytorch.losses.focal import FocalLoss
+floss = FocalLoss(mode = 'multiclass',
+                alpha = None,
+                gamma = 2.0,
+                ignore_index = None,
+                reduction = "mean",
+                normalized = False,
+                reduced_threshold = None)
 
 def evaluate(net, dataloader, device, ampbool, traintype='post'):
     num_val_batches = len(dataloader)
@@ -39,11 +47,12 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
                         mask_pred = net(preimage, postimage)
                         # convert to one-hot format
                         loss = criterion(mask_pred, true_masks)
-                        loss += dice_loss(
-                            F.softmax(mask_pred, dim=1).float()[:, 1:, ...],
-                            F.one_hot(true_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
-                            multiclass=True
-                        )
+                        loss += floss(mask_pred, true_masks)
+                        # loss += dice_loss(
+                        #     F.softmax(mask_pred, dim=1).float()[:, 1:, ...],
+                        #     F.one_hot(true_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
+                        #     multiclass=True
+                        # )
                         if 5 == 1:
                             mask_pred = (F.sigmoid(mask_pred) > 0.5).float()
                             # compute the Dice score

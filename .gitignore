@@ -18,3 +18,5 @@ SiameseUNetWithResnet50Encoder.onnx
 **/*.tif
 **/*.jpeg
 **/*.log
+**/*.png
+**/*.jpg
