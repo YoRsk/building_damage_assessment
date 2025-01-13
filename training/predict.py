@@ -461,6 +461,14 @@ def calculate_metrics(prediction, ground_truth):
     prediction_tensor = torch.from_numpy(prediction).long().unsqueeze(0).to(device)
     ground_truth_tensor = torch.from_numpy(ground_truth).long().unsqueeze(0).to(device)
     
+    # 添加混淆矩阵计算
+    confusion_matrix_5 = torchmetrics.ConfusionMatrix(
+        task='multiclass', 
+        num_classes=5,
+        normalize='true'
+    ).to(device)
+    conf_mat_5 = confusion_matrix_5(prediction_tensor, ground_truth_tensor)
+    
     # 初始化metrics（排除背景类）
     accuracy_5 = torchmetrics.Accuracy(task='multiclass', num_classes=5, 
                                      ignore_index=0, validate_args=False).to(device)
@@ -533,40 +541,56 @@ def calculate_metrics(prediction, ground_truth):
     f1_2_per_class = f1_score_2_per_class.compute()
     iou_score_2 = iou_2.compute()
     
+    # 二分类的混淆矩阵
+    confusion_matrix_2 = torchmetrics.ConfusionMatrix(
+        task='multiclass',
+        num_classes=3,
+        normalize='true'
+    ).to(device)
+    conf_mat_2 = confusion_matrix_2(binary_prediction_tensor, binary_ground_truth_tensor)
+    
     # 清除缓存
     for metric in [accuracy_5, precision_5, recall_5, f1_score_5, iou_5, f1_score_5_per_class,
                   accuracy_2, precision_2, recall_2, f1_score_2, iou_2, f1_score_2_per_class]:
         metric.reset()
     
     return (acc_5.item(), f1_5.item(), iou_score_5.item(), prec_5.item(), rec_5.item(), f1_5_per_class.tolist(),
-            acc_2.item(), f1_2.item(), iou_score_2.item(), prec_2.item(), rec_2.item(), f1_2_per_class.tolist())
-# def calculate_metrics(prediction, ground_truth):
-#     prediction_tensor = torch.from_numpy(prediction).unsqueeze(0)
-#     ground_truth_tensor = torch.from_numpy(ground_truth).unsqueeze(0)
+            acc_2.item(), f1_2.item(), iou_score_2.item(), prec_2.item(), rec_2.item(), f1_2_per_class.tolist(),
+            conf_mat_5.cpu().numpy(), conf_mat_2.cpu().numpy())
+
+def plot_confusion_matrices(conf_mat_5, conf_mat_2, save_path='./confusion_matrices.png'):
+    import seaborn as sns
+    import matplotlib.pyplot as plt
     
-#     dice = multiclass_dice_coeff(
-#         F.one_hot(prediction_tensor, 5).permute(0, 3, 1, 2).float(),
-#         F.one_hot(ground_truth_tensor, 5).permute(0, 3, 1, 2).float(),
-#         reduce_batch_first=False
-#     )
+    class_names_5 = ['Background', 'No Damage', 'Minor', 'Major', 'Destroyed']
+    class_names_2 = ['Background', 'Undamaged', 'Damaged']
     
-#     f1_score = F1Score(task='multiclass', num_classes=5, average='macro')
-#     f1 = f1_score(prediction_tensor, ground_truth_tensor)
+    # 创建一个图形，包含两个子图
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
     
-#     iou_score = JaccardIndex(task="multiclass", num_classes=5)
-#     iou = iou_score(prediction_tensor, ground_truth_tensor)
+    # 5分类混淆矩阵
+    sns.heatmap(conf_mat_5, annot=True, fmt='.3f', 
+                xticklabels=class_names_5, 
+                yticklabels=class_names_5,
+                cmap='Blues', ax=ax1)
+    ax1.set_title('5-Class Confusion Matrix')
+    ax1.set_ylabel('True Label')
+    ax1.set_xlabel('Predicted Label')
     
-#     precision_score = Precision(task="multiclass", num_classes=5, average='macro')
-#     precision = precision_score(prediction_tensor, ground_truth_tensor)
+    # 2分类混淆矩阵
+    sns.heatmap(conf_mat_2, annot=True, fmt='.3f', 
+                xticklabels=class_names_2, 
+                yticklabels=class_names_2,
+                cmap='Blues', ax=ax2)
+    ax2.set_title('Binary Confusion Matrix')
+    ax2.set_ylabel('True Label')
+    ax2.set_xlabel('Predicted Label')
     
-#     recall_score = Recall(task="multiclass", num_classes=5, average='macro')
-#     recall = recall_score(prediction_tensor, ground_truth_tensor)
+    plt.tight_layout()
     
-#     # auroc = AUROC(task="multiclass", num_classes=5)
-#     # pred_probs = F.one_hot(torch.from_numpy(prediction).long(), 5).float()
-#     # auc_roc = auroc(pred_probs, ground_truth_tensor)
-    
-#     return dice.item(), f1.item(), iou.item(), precision.item(), recall.item()
+    # 保存图像而不是显示
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()  # 关闭图形，释放内存
 
 def main():
     parser = argparse.ArgumentParser()
@@ -704,6 +728,12 @@ def main():
         for i, f1 in enumerate(metrics[11]):
             print(f'{class_names_2[i]}: {f1:.4f}')
         visualize_prediction(np.array(post_image), ground_truth_np, prediction, args.show_original)
+
+        # 保存混淆矩阵热力图
+        # 可以根据不同的模型或数据集生成不同的文件名
+        save_path = f'./confusion_matrices_{Path(pre_image_path).stem}.png'
+        plot_confusion_matrices(metrics[-2], metrics[-1], save_path)
+        print(f"Confusion matrices have been saved to {save_path}")
 
     else:
         visualize_prediction(np.array(post_image), None, prediction, args.show_original)
