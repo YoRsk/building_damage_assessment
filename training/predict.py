@@ -461,13 +461,15 @@ def calculate_metrics(prediction, ground_truth):
     prediction_tensor = torch.from_numpy(prediction).long().unsqueeze(0).to(device)
     ground_truth_tensor = torch.from_numpy(ground_truth).long().unsqueeze(0).to(device)
     
-    # 添加混淆矩阵计算
+    # 修改混淆矩阵计算，只考虑建筑区域的类别
     confusion_matrix_5 = torchmetrics.ConfusionMatrix(
         task='multiclass', 
         num_classes=5,
         normalize='true'
     ).to(device)
     conf_mat_5 = confusion_matrix_5(prediction_tensor, ground_truth_tensor)
+    # 只保留建筑物类别（移除背景类）
+    conf_mat_5 = conf_mat_5[1:, 1:]
     
     # 初始化metrics（排除背景类）
     accuracy_5 = torchmetrics.Accuracy(task='multiclass', num_classes=5, 
@@ -541,13 +543,15 @@ def calculate_metrics(prediction, ground_truth):
     f1_2_per_class = f1_score_2_per_class.compute()
     iou_score_2 = iou_2.compute()
     
-    # 二分类的混淆矩阵
+    # 二分类的混淆矩阵，同样移除背景类
     confusion_matrix_2 = torchmetrics.ConfusionMatrix(
         task='multiclass',
         num_classes=3,
         normalize='true'
     ).to(device)
     conf_mat_2 = confusion_matrix_2(binary_prediction_tensor, binary_ground_truth_tensor)
+    # 只保留建筑物类别（移除背景类）
+    conf_mat_2 = conf_mat_2[1:, 1:]
     
     # 清除缓存
     for metric in [accuracy_5, precision_5, recall_5, f1_score_5, iou_5, f1_score_5_per_class,
@@ -562,8 +566,9 @@ def plot_confusion_matrices(conf_mat_5, conf_mat_2, save_path='./confusion_matri
     import seaborn as sns
     import matplotlib.pyplot as plt
     
-    class_names_5 = ['Background', 'No Damage', 'Minor', 'Major', 'Destroyed']
-    class_names_2 = ['Background', 'Undamaged', 'Damaged']
+    # 修改类别名称，移除背景类
+    class_names_5 = ['No Damage', 'Minor', 'Major', 'Destroyed']
+    class_names_2 = ['Undamaged', 'Damaged']
     
     # 创建一个图形，包含两个子图
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
@@ -573,7 +578,7 @@ def plot_confusion_matrices(conf_mat_5, conf_mat_2, save_path='./confusion_matri
                 xticklabels=class_names_5, 
                 yticklabels=class_names_5,
                 cmap='Blues', ax=ax1)
-    ax1.set_title('5-Class Confusion Matrix')
+    ax1.set_title('4-Class Confusion Matrix (Building Area Only)')
     ax1.set_ylabel('True Label')
     ax1.set_xlabel('Predicted Label')
     
@@ -582,15 +587,13 @@ def plot_confusion_matrices(conf_mat_5, conf_mat_2, save_path='./confusion_matri
                 xticklabels=class_names_2, 
                 yticklabels=class_names_2,
                 cmap='Blues', ax=ax2)
-    ax2.set_title('Binary Confusion Matrix')
+    ax2.set_title('Binary Confusion Matrix (Building Area Only)')
     ax2.set_ylabel('True Label')
     ax2.set_xlabel('Predicted Label')
     
     plt.tight_layout()
-    
-    # 保存图像而不是显示
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()  # 关闭图形，释放内存
+    plt.close()
 
 def main():
     parser = argparse.ArgumentParser()
@@ -601,6 +604,14 @@ def main():
     parser.add_argument('--ground-truth-mask', type=str, default='',
                       help='Path to the ground truth mask file (for evaluation)')
     args = parser.parse_args()
+    #version 8.4 change loss to only Floss loss
+    model_path = './checkpoints/saved_84_enhanced_v_1.0_lr_5.0e-05_20250120_204602/best_model.pth'
+    #version 7.4 change loss to only Dice loss
+    # model_path = './checkpoints/saved_74_enhanced_v_1.0_lr_5.0e-05_20250120_164924/best_model.pth'
+    #version 6.4 change loss to CEL 
+    # model_path = './checkpoints/saved_64_enhanced_v_1.0_lr_5.0e-05_20250114_204116/best_model.pth'
+    # version 5.4 change loss to CEL + focal loss
+    # model_path = './checkpoints/saved_54_enhanced_v_1.0_lr_5.0e-05_20250111_230010/best_model.pth'
     # version 4.4 change lr to 1e-6 from 1.x version
     # model_path = './checkpoints/enhanced_v_1.0_lr_1.0e-06_20241226_210303/checkpoint_epoch24.pth'
     # version 3.4 ONLY ON BUILDING AREA
