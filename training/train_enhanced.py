@@ -23,6 +23,7 @@ from torch.utils.data import DataLoader, random_split
 from utils.tensor_encoder import TensorEncoder
 from clearml import Task
 from torchmetrics import JaccardIndex
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'
 closs = nn.CrossEntropyLoss()
 
 floss = FocalLoss(mode = 'multiclass',
@@ -132,13 +133,13 @@ def train_net_enhanced(net,
                     masks_pred = None
                     if traintype == 'both':
                         masks_pred = net(preimage, postimage)
+                        # loss = floss(masks_pred, post_masks)
                         loss = criterion(masks_pred, post_masks)
-                        loss += floss(masks_pred, post_masks)
-                        # loss += dice_loss(
-                        #     F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
-                        #     F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
-                        #     multiclass=True
-                        # )
+                        loss += dice_loss(
+                            F.softmax(masks_pred, dim=1).float()[:, 1:, ...],
+                            F.one_hot(post_masks, 5).permute(0, 3, 1, 2).float()[:, 1:, ...],
+                            multiclass=True
+                        )
                     elif traintype == 'pre':
                         masks_pred = net(preimage)
                         loss = criterion(masks_pred, pre_masks)
@@ -478,17 +479,12 @@ def visualize_fold_results(results):
 
 classes = 5
 bilinear = True
-# loadstate = False
-loadstate = True
-load = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
-# load = './checkpoints/best0921.pth'
 start_epoch = 1
 epochs = 60
 batch_size = 4
 # batch_size = 1
 # lr = 2.69e-4
 # lr = 8.125358e-4
-
 # lr = 3.5e-5
 # gamma = 0.98
 # lr = lr * (gamma ** 100)  # 计算经过100个epoch后的学习率
@@ -496,7 +492,6 @@ lr = 5e-5
 # lr = 1e-6
 scale = 1
 train = 1
-# train =0.15259598603*2
 val = 1
 test = 1
 ampbool = True
@@ -504,6 +499,13 @@ save_checkpoint = True
 traintype = 'both'
 gradclip = 1.0
 
+loadstate = False
+# loadstate = True
+# load = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
+
+# load = './checkpoints/best0921.pth'
+net = SiamUNetConCVgg19()
+# net = SiameseUNetWithResnet50Encoder()
 epochs=60
 batch_size=4      # 使用较小的batch_size
 learning_rate=5e-5
@@ -521,8 +523,7 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    net = SiamUNetConCVgg19()
-    # net = SiameseUNetWithResnet50Encoder()
+
     if loadstate:
         net.load_state_dict(torch.load(load, map_location=device))
         logger.info(f'Model loaded from {load}')

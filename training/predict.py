@@ -42,7 +42,8 @@ CONFIG = {
 def load_model(model_path):
     #model = SiameseUNetWithResnet50Encoder()
     model = SiamUNetConCVgg19()
-    model.load_state_dict(torch.load(model_path, weights_only=True))
+    if model_path:  # 只在路径非空时加载权重
+        model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
     return model
 class BuildingAwarePredictor:
@@ -609,13 +610,15 @@ def main():
     parser.add_argument('--ground-truth-mask', type=str, default='',
                       help='Path to the ground truth mask file (for evaluation)')
     parser.add_argument('--light-background', action='store_true',
-                      help='Use light background color (#f8f8f8)')
+                      help='Use light background color')
     args = parser.parse_args()
-    #version 8.4 change loss to only Floss loss
-    model_path = './checkpoints/saved_84_enhanced_v_1.0_lr_5.0e-05_20250120_204602/best_model.pth'
-    #version 7.4 change loss to only Dice loss
+    # Second BEST MODEL version 9.4 change loss to only Dice loss
+    # model_path = './checkpoints/saved_94_enhanced_v_1.0_lr_5.0e-05_20250125_163021/best_model.pth'
+    # version 8.4 change loss to only Floss loss
+    # model_path = './checkpoints/saved_84_enhanced_v_1.0_lr_5.0e-05_20250120_204602/best_model.pth'
+    # version 7.4 change loss to only Dice loss
     # model_path = './checkpoints/saved_74_enhanced_v_1.0_lr_5.0e-05_20250120_164924/best_model.pth'
-    #version 6.4 change loss to CEL 
+    # version 6.4 change loss to CEL 
     # model_path = './checkpoints/saved_64_enhanced_v_1.0_lr_5.0e-05_20250114_204116/best_model.pth'
     # version 5.4 change loss to CEL + focal loss
     # model_path = './checkpoints/saved_54_enhanced_v_1.0_lr_5.0e-05_20250111_230010/best_model.pth'
@@ -625,29 +628,35 @@ def main():
     # model_path = './checkpoints/saved_34_enhanced_v_1.0_lr_5.0e-05_20241226_165039/best_model.pth'
     # version 2 loss only on building area
     # model_path = './checkpoints/saved_24_enhanced_v_1.0_lr_5.0e-05_20241224_212710/checkpoint_epoch25.pth'
-    # BEST MODEL !!!version 1.4 after retrain
-    model_path = './checkpoints/saved_14_enhanced_v_1.0_lr_5.0e-05_20241221_171929/best_model.pth'
-    # version 1.2 after retrain
-    # model_path = './checkpoints/saved_12_enhanced_v_1.0_lr_5.0e-05_20241221_151300/checkpoint_epoch60.pth'
-    # version 0 before retrain
-    # model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
 
-    #model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch52.pth'
+    ####### compare for generate RESULT OUTPUT
+    # VGG19
+    # pretrain + fine-tuning BEST MODEL !!!version 1.4 loss: Dice+CEL
+    model_path = './checkpoints/saved_14_enhanced_v_1.0_lr_5.0e-05_20241221_171929/best_model.pth'
+    # ONLY pretrain version 0 
+    # model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
+    # baseline
+    # model_path = ''
+    # ONLY FINE-TUNING is training
+    # model_path = ''
+
     #好像下面这个RESNET的
     # model_path = './training/checkpoints/best0921.pth'
-    # # xbd
+    
+    ### DATASET
+    # xBD dataset
     # img_home_path = "C:/Users/xiao/peng/xbd/Dataset/Validation"
     # pre_image_path = img_home_path + "/Pre/Image512/"+ "hurricane-michael_00000400_pre_disaster.png"
     # post_image_path = img_home_path + "/Post/Image512/"+ "hurricane-michael_00000400_post_disaster.png"
     # mask_path = img_home_path + "/Post/Label512/"+ "hurricane-michael_00000400_post_disaster.png"
 
-    #my dataset
-    # Volnovakha
+    # my dataset
+    #   Volnovakha
     # pre_image_path = './training/images/Volnovakha_20210513.tif'
     pre_image_path = './training/images/Volnovakha_20210622_20220512_pre.tif'
     post_image_path = './training/images/Volnovakha_20210622_20220512_post.tif'
 
-    # Rubizhne
+    #   Rubizhne
     # pre_image_path = './training/images/Pre/Image512/Rubizhne_20210915_20220921_pre.tif'
     # post_image_path = './training/images/Post/Image512/Rubizhne_20210915_20220921_post.tif'
     #pre

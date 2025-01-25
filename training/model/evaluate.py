@@ -96,6 +96,7 @@ def evaluate(net, dataloader, device, ampbool, traintype='post'):
                         # predict the mask
                         mask_pred = net(postimage)
                         # convert to one-hot format
+                        # loss = floss(mask_pred, true_masks)
                         loss = criterion(mask_pred, true_masks)
                         loss += dice_loss(
                             F.softmax(mask_pred, dim=1).float()[:, 1:, ...],
