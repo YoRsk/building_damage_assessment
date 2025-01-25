@@ -135,12 +135,12 @@ class BuildingAwarePredictor:
         
         # 确保非建筑区域为0
         processed_pred[building_mask == 0] = self.damage_classes["un-classified"]
-        
+        #########################################################处理小型建筑的功能#################################################
         # # 先应用小型建筑物的特殊处理（只在building_mask内）
         # small_building_pred = self.process_with_building_attention(prediction_prob, building_mask)
         # # 只更新building_mask内的区域
         # processed_pred[building_mask > 0] = small_building_pred[building_mask > 0]
-        
+        #########################################################处理小型建筑的功能#################################################
         # 对所有建筑物（包括大型建筑）进行处理
         building_labels = measure.label(building_mask)
         print("\npost process...")
@@ -153,12 +153,12 @@ class BuildingAwarePredictor:
                 
                 # # 对损伤类别进行加权（每个等级使用不同阈值）
                 # weighted_probs = building_probs.copy()
-                # # minor damage
-                # weighted_probs[:, 2] *= self.config['DAMAGE_THRESHOLD']
-                # # major damage
-                # weighted_probs[:, 3] *= self.config['DAMAGE_THRESHOLD'] * 1.5
-                # # destroyed
-                # weighted_probs[:, 4] *= self.config['DAMAGE_THRESHOLD'] * 2.0
+                # minor damage
+                weighted_probs[:, 2] *= self.config['DAMAGE_THRESHOLD']
+                # major damage
+                weighted_probs[:, 3] *= self.config['DAMAGE_THRESHOLD'] * 1.5
+                # destroyed
+                weighted_probs[:, 4] *= self.config['DAMAGE_THRESHOLD'] * 2.0
                 
                 # 对每个像素点分别取最大概率的类别
                 pixel_pred = np.argmax(weighted_probs, axis=1)
@@ -349,9 +349,14 @@ def preprocess_image(image, is_mask=False):
         ])
     
     return transform(image)
-def visualize_prediction(image, mask, prediction, show_original_unclassified=False):
+def visualize_prediction(image, mask, prediction, light_background=True):
     """
     内存优化的可视化函数，保持原始分辨率
+    Args:
+        image: 原始图像
+        mask: ground truth mask
+        prediction: 预测结果
+        light_background: 是否使用浅色背景 (#f8f8f8)
     """
     # 打印类别统计
     unique, counts = np.unique(prediction, return_counts=True)
@@ -370,9 +375,8 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
     # 创建更大的图形，并调整子图之间的间距
-    fig = plt.figure(figsize=(24, 8))  # 增加整体图形大小
-    # 移除 height_ratios 参数，使用更小的 wspace
-    gs = plt.GridSpec(1, 3, figure=fig, wspace=0.1)  
+    fig = plt.figure(figsize=(24, 8))    
+    gs = plt.GridSpec(1, 3, figure=fig, wspace=0.1)
 
     # 设置显示参数
     plt.rcParams['image.interpolation'] = 'nearest'
@@ -383,6 +387,13 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
     ax2 = fig.add_subplot(gs[1])
     ax3 = fig.add_subplot(gs[2])
 
+    if light_background:
+        for ax in [ax1, ax2, ax3]:
+            ax.set_facecolor('#C0C0C0')
+        # 修改cmap中的黑色为灰色
+        colors = ['#C0C0C0', 'blue', 'green', 'yellow', 'red']
+        cmap = mcolors.ListedColormap(colors[:n_classes])
+    
     # 显示原始图像
     ax1.imshow(image)
     ax1.set_title('Original Image', pad=20)  # 增加标题和图像之间的间距
@@ -396,8 +407,8 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
         ax2.set_visible(False)
     ax2.axis('off')
 
-    # 显示预测结果
-    if show_original_unclassified:
+    # # 显示预测结果
+    if not light_background:
         # 创建RGB掩码（使用uint8以节省内存）
         overlay = np.zeros((*prediction.shape, 3), dtype=np.uint8)
         
@@ -409,26 +420,20 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
                 for i in range(3):
                     overlay[mask, i] = int(rgb_color[i])
         
-        # 显示原始图像
+        # 显示原始图像和叠加结果
         ax3.imshow(image)
-        # 叠加预测结果
         ax3.imshow(overlay, alpha=0.5)
-        ax3.set_title('Prediction', pad=20)
-    else:
-        # 直接显示预测结果
-        im3 = ax3.imshow(prediction, cmap=cmap, norm=norm)
-        ax3.set_title('Prediction', pad=20)
-    ax3.axis('off')
-
-    # 添加颜色条，调整位置和大小
-    if show_original_unclassified:
         dummy_im = ax3.imshow(prediction, cmap=cmap, norm=norm, visible=False)
         cbar = fig.colorbar(dummy_im, ax=ax3, orientation='horizontal', 
                           fraction=0.046, pad=0.08)
     else:
+        # 直接显示预测结果，不显示底图
+        im3 = ax3.imshow(prediction, cmap=cmap, norm=norm)
         cbar = fig.colorbar(im3, ax=ax3, orientation='horizontal', 
                           fraction=0.046, pad=0.08)
 
+    ax3.set_title('Prediction', pad=20)
+    ax3.axis('off')
     cbar.set_ticks(bounds[:-1] + 0.5)
     cbar.set_ticklabels(class_names)
     cbar.ax.tick_params(labelsize=8)
@@ -450,8 +455,8 @@ def visualize_prediction(image, mask, prediction, show_original_unclassified=Fal
                 ax.images[0].set_interpolation('nearest')
 
     fig.canvas.mpl_connect('draw_event', on_draw)
-
     plt.show()
+
 def calculate_metrics(prediction, ground_truth):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
@@ -603,6 +608,8 @@ def main():
                       help='Path to the building mask file (binary mask for detection)')
     parser.add_argument('--ground-truth-mask', type=str, default='',
                       help='Path to the ground truth mask file (for evaluation)')
+    parser.add_argument('--light-background', action='store_true',
+                      help='Use light background color (#f8f8f8)')
     args = parser.parse_args()
     #version 8.4 change loss to only Floss loss
     model_path = './checkpoints/saved_84_enhanced_v_1.0_lr_5.0e-05_20250120_204602/best_model.pth'
@@ -618,8 +625,8 @@ def main():
     # model_path = './checkpoints/saved_34_enhanced_v_1.0_lr_5.0e-05_20241226_165039/best_model.pth'
     # version 2 loss only on building area
     # model_path = './checkpoints/saved_24_enhanced_v_1.0_lr_5.0e-05_20241224_212710/checkpoint_epoch25.pth'
-    # version 1.4 after retrain
-    # model_path = './checkpoints/saved_14_enhanced_v_1.0_lr_5.0e-05_20241221_171929/best_model.pth'
+    # BEST MODEL !!!version 1.4 after retrain
+    model_path = './checkpoints/saved_14_enhanced_v_1.0_lr_5.0e-05_20241221_171929/best_model.pth'
     # version 1.2 after retrain
     # model_path = './checkpoints/saved_12_enhanced_v_1.0_lr_5.0e-05_20241221_151300/checkpoint_epoch60.pth'
     # version 0 before retrain
@@ -738,7 +745,7 @@ def main():
         class_names_2 = ['Background', 'Undamaged', 'Damaged']
         for i, f1 in enumerate(metrics[11]):
             print(f'{class_names_2[i]}: {f1:.4f}')
-        visualize_prediction(np.array(post_image), ground_truth_np, prediction, args.show_original)
+        visualize_prediction(np.array(post_image), ground_truth_np, prediction, args.light_background)
 
         # 保存混淆矩阵热力图
         # 可以根据不同的模型或数据集生成不同的文件名
@@ -747,7 +754,7 @@ def main():
         print(f"Confusion matrices have been saved to {save_path}")
 
     else:
-        visualize_prediction(np.array(post_image), None, prediction, args.show_original)
+        visualize_prediction(np.array(post_image), None, prediction, args.light_background)
 
 if __name__ == '__main__':
     main()
