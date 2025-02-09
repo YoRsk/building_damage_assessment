@@ -188,6 +188,35 @@ class BuildingAwarePredictor:
         assert processed_pred.min() >= 0 and processed_pred.max() <= 4, "Invalid prediction values"
         return processed_pred
         
+def debug_model_output(model, pre_tensor, post_tensor, device='cuda'):
+    """
+    Debug function to inspect model outputs at different stages
+    """
+    model.eval()
+    with torch.no_grad():
+        # 1. Check input tensors
+        print(f"Pre-tensor range: {pre_tensor.min():.2f} to {pre_tensor.max():.2f}")
+        print(f"Post-tensor range: {post_tensor.min():.2f} to {post_tensor.max():.2f}")
+        
+        # 2. Get model output before softmax
+        raw_output = model(pre_tensor, post_tensor)
+
+        print(f"\nRaw output shape: {raw_output.shape}")
+        print(f"Raw output range: {raw_output.min():.2f} to {raw_output.max():.2f}")
+        
+        # 3. Check after softmax
+        prob_output = F.softmax(raw_output, dim=1)
+        print(f"\nSoftmax output range: {prob_output.min():.2f} to {prob_output.max():.2f}")
+        print(f"Sum of probabilities: {prob_output.sum(dim=1).mean():.2f}")
+        
+        # 4. Check class distribution
+        pred_classes = torch.argmax(prob_output, dim=1)
+        unique_classes, counts = torch.unique(pred_classes, return_counts=True)
+        print("\nClass distribution:")
+        for cls, count in zip(unique_classes.cpu().numpy(), counts.cpu().numpy()):
+            print(f"Class {cls}: {count} pixels")
+
+
    
 def get_fixed_size_window(image, x1, y1, end_x, end_y, window_size=CONFIG['WINDOW_SIZE']):
     """
@@ -215,7 +244,6 @@ def predict_with_sliding_window(model, pre_image, post_image, building_mask=None
     """使用滑动窗口进行预测"""
     model.to(device)
     model.eval()
-    
     width, height = pre_image.size
     window_size = CONFIG['WINDOW_SIZE']
     overlap = CONFIG['OVERLAP']
@@ -256,17 +284,13 @@ def predict_with_sliding_window(model, pre_image, post_image, building_mask=None
                 #pred 为 softmax
                 # 获取概率分布预测
                 pred = predict_image(model, pre_window, post_window, mask_window, device)
-                
                 actual_height = end_y - y1
                 actual_width = end_x - x1
-                # 调整预测结果的大小
                 pred = pred[:actual_height, :actual_width, :]
                 
                 output[y1:end_y, x1:end_x] += pred
                 counts[y1:end_y, x1:end_x] += 1
-                
                 pbar.update(1)
-                
                 if device == 'cuda':
                     torch.cuda.empty_cache()
     
@@ -300,7 +324,10 @@ def predict_image(model, pre_image, post_image, building_mask=None, device='cuda
     
     pre_tensor = preprocess_image(pre_image, is_mask=False)
     post_tensor = preprocess_image(post_image, is_mask=False)
-    
+
+    # # debug  RESNET时用 ，可以取消后处理策略，然后下面 calculate_metrics 时还有一个需要修改
+    # debug_model_output(model, pre_tensor.unsqueeze(0).to(device), 
+    #                   post_tensor.unsqueeze(0).to(device), device)
     if building_mask is not None:
         building_mask = building_mask.resize((new_width, new_height), Image.Resampling.NEAREST)
         building_mask = preprocess_image(building_mask, is_mask=True)
@@ -312,7 +339,8 @@ def predict_image(model, pre_image, post_image, building_mask=None, device='cuda
     
     with torch.no_grad():
         output = model(pre_tensor, post_tensor)
-        # 转换为概率分布
+        if isinstance(model, SiameseUNetWithResnet50Encoder):
+            output = output / 100  # 只对ResNet模型缩放
         pred_prob = F.softmax(output, dim=1)
         # 转换为numpy数组，调整维度顺序 from (C, H, W) to (H, W, C)
         pred_prob = pred_prob.squeeze().permute(1, 2, 0).cpu().numpy()
@@ -330,7 +358,6 @@ def predict_image(model, pre_image, post_image, building_mask=None, device='cuda
             pred_prob = pred_prob_resized
         
         return pred_prob
-
 def preprocess_image(image, is_mask=False):
     """
     预处理图像，保持固定尺寸
@@ -350,16 +377,21 @@ def preprocess_image(image, is_mask=False):
         ])
     
     return transform(image)
-def visualize_prediction(image, mask, prediction, light_background=True):
+def visualize_prediction(image, mask, prediction, light_background=True, screenshot_mode=True):
     """
-    内存优化的可视化函数，保持原始分辨率
+    Memory-optimized visualization function, maintains original resolution
     Args:
-        image: 原始图像
-        mask: ground truth mask
-        prediction: 预测结果
-        light_background: 是否使用浅色背景 (#f8f8f8)
+        image: original image
+        mask: ground truth mask 
+        prediction: prediction result
+        light_background: whether to use light background (#f8f8f8)
+        screenshot_mode: if True, only show prediction without colorbar
     """
-    # 打印类别统计
+    # Print class statistics 针对RESNET的，不确定有没有用
+    if prediction.shape[-1] == 5:
+        prediction = np.argmax(prediction, axis=-1)
+    
+    prediction = prediction.astype(np.int32)
     unique, counts = np.unique(prediction, return_counts=True)
     total_pixels = prediction.size
     print("\nClass distribution:")
@@ -368,101 +400,102 @@ def visualize_prediction(image, mask, prediction, light_background=True):
         percentage = (count / total_pixels) * 100
         print(f"{class_names[value]}: {count} pixels ({percentage:.2f}%)")
 
-    # 定义颜色映射
+    # Define color mapping
     colors = ['black', 'blue', 'green', 'yellow', 'red']
     n_classes = 5
     cmap = mcolors.ListedColormap(colors[:n_classes])
     bounds = np.arange(n_classes + 1)
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
-
-    # 创建更大的图形，并调整子图之间的间距
-    fig = plt.figure(figsize=(24, 8))    
-    gs = plt.GridSpec(1, 3, figure=fig, wspace=0.1)
-
-    # 设置显示参数
-    plt.rcParams['image.interpolation'] = 'nearest'
-    plt.rcParams['image.resample'] = False
-
-    # 创建子图
-    ax1 = fig.add_subplot(gs[0])
-    ax2 = fig.add_subplot(gs[1])
-    ax3 = fig.add_subplot(gs[2])
-
-    if light_background:
-        for ax in [ax1, ax2, ax3]:
-            ax.set_facecolor('#C0C0C0')
-        # 修改cmap中的黑色为灰色
-        colors = ['#C0C0C0', 'blue', 'green', 'yellow', 'red']
+    if screenshot_mode:
+        fig = plt.figure()
+        if light_background:
+            colors = ['#C0C0C0', 'blue', 'green', 'yellow', 'red'] 
+        else:
+            colors = ['black', 'blue', 'green', 'yellow', 'red']
         cmap = mcolors.ListedColormap(colors[:n_classes])
-    
-    # 显示原始图像
-    ax1.imshow(image)
-    ax1.set_title('Original Image', pad=20)  # 增加标题和图像之间的间距
-    ax1.axis('off')
-
-    # 显示ground truth（如果有）
-    if mask is not None:
-        ax2.imshow(mask, cmap=cmap, norm=norm)
-        ax2.set_title('Ground Truth', pad=20)
+        plt.imshow(prediction, cmap=cmap, norm=norm, interpolation='nearest')  # 加上 interpolation='nearest'
+        plt.axis('off')
+        plt.subplots_adjust(0, 0, 1, 1)
+        plt.show()
+        return
     else:
-        ax2.set_visible(False)
-    ax2.axis('off')
+        # Normal visualization mode
+        fig = plt.figure(figsize=(24, 8))    
+        gs = plt.GridSpec(1, 3, figure=fig, wspace=0.1)
 
-    # # 显示预测结果
-    if not light_background:
-        # 创建RGB掩码（使用uint8以节省内存）
-        overlay = np.zeros((*prediction.shape, 3), dtype=np.uint8)
+        plt.rcParams['image.interpolation'] = 'nearest'
+        plt.rcParams['image.resample'] = False
+
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1])
+        ax3 = fig.add_subplot(gs[2])
+
+        if light_background:
+            for ax in [ax1, ax2, ax3]:
+                ax.set_facecolor('#C0C0C0')
+            colors = ['#C0C0C0', 'blue', 'green', 'yellow', 'red']
+            cmap = mcolors.ListedColormap(colors[:n_classes])
         
-        # 逐类别处理，避免一次性创建大数组
-        for class_idx, color in enumerate(colors):
-            if class_idx > 0:  # 跳过未分类
-                mask = prediction == class_idx
-                rgb_color = np.array(mcolors.to_rgb(color)) * 255
-                for i in range(3):
-                    overlay[mask, i] = int(rgb_color[i])
-        
-        # 显示原始图像和叠加结果
-        ax3.imshow(image)
-        ax3.imshow(overlay, alpha=0.5)
-        dummy_im = ax3.imshow(prediction, cmap=cmap, norm=norm, visible=False)
-        cbar = fig.colorbar(dummy_im, ax=ax3, orientation='horizontal', 
-                          fraction=0.046, pad=0.08)
-    else:
-        # 直接显示预测结果，不显示底图
-        im3 = ax3.imshow(prediction, cmap=cmap, norm=norm)
-        cbar = fig.colorbar(im3, ax=ax3, orientation='horizontal', 
-                          fraction=0.046, pad=0.08)
+        ax1.imshow(image)
+        ax1.set_title('Original Image', pad=20)
+        ax1.axis('off')
 
-    ax3.set_title('Prediction', pad=20)
-    ax3.axis('off')
-    cbar.set_ticks(bounds[:-1] + 0.5)
-    cbar.set_ticklabels(class_names)
-    cbar.ax.tick_params(labelsize=8)
+        if mask is not None:
+            ax2.imshow(mask, cmap=cmap, norm=norm)
+            ax2.set_title('Ground Truth', pad=20)
+        else:
+            ax2.set_visible(False)
+        ax2.axis('off')
 
-    # 设置所有子图的纵横比相同并确保填充整个可用空间
-    for ax in [ax1, ax2, ax3]:
-        if ax.get_visible():
-            ax.set_aspect('equal', adjustable='box')
-            # 移除所有边距
-            ax.set_position(ax.get_position().expanded(1.0, 1.0))
+        if not light_background:
+            overlay = np.zeros((*prediction.shape, 3), dtype=np.uint8)
+            
+            for class_idx, color in enumerate(colors):
+                if class_idx > 0:
+                    mask = prediction == class_idx
+                    rgb_color = np.array(mcolors.to_rgb(color)) * 255
+                    for i in range(3):
+                        overlay[mask, i] = int(rgb_color[i])
+            
+            ax3.imshow(image)
+            ax3.imshow(overlay, alpha=0.5)
+            dummy_im = ax3.imshow(prediction, cmap=cmap, norm=norm, visible=False)
+            cbar = fig.colorbar(dummy_im, ax=ax3, orientation='horizontal', 
+                             fraction=0.046, pad=0.08)
+        else:
+            im3 = ax3.imshow(prediction, cmap=cmap, norm=norm)
+            cbar = fig.colorbar(im3, ax=ax3, orientation='horizontal', 
+                             fraction=0.046, pad=0.08)
 
-    # 移除 tight_layout，改用手动调整
-    plt.subplots_adjust(top=0.95, bottom=0.15, left=0.02, right=0.98)
+        ax3.set_title('Prediction', pad=20)
+        ax3.axis('off')
+        cbar.set_ticks(bounds[:-1] + 0.5)
+        cbar.set_ticklabels(class_names)
+        cbar.ax.tick_params(labelsize=8)
 
-    # 确保像素级显示
-    def on_draw(event):
         for ax in [ax1, ax2, ax3]:
             if ax.get_visible():
-                ax.images[0].set_interpolation('nearest')
+                ax.set_aspect('equal', adjustable='box')
+                ax.set_position(ax.get_position().expanded(1.0, 1.0))
 
-    fig.canvas.mpl_connect('draw_event', on_draw)
+        plt.subplots_adjust(top=0.95, bottom=0.15, left=0.02, right=0.98)
+
+        def on_draw(event):
+            for ax in [ax1, ax2, ax3]:
+                if ax.get_visible():
+                    ax.images[0].set_interpolation('nearest')
+
+        fig.canvas.mpl_connect('draw_event', on_draw)
     plt.show()
-
 def calculate_metrics(prediction, ground_truth):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
+    if len(prediction.shape) == 3 and prediction.shape[2] == 5:
+        prediction = np.argmax(prediction, axis=2)
     # 计算5分类指标
     prediction = prediction.astype(np.int64)
+    #取消后处理策略时用，还有一个在predict_image中
+    # if len(prediction.shape) == 3 and prediction.shape[2] == 5:
+    #     prediction = np.argmax(prediction, axis=2)
     ground_truth = ground_truth.astype(np.int64)
     prediction_tensor = torch.from_numpy(prediction).long().unsqueeze(0).to(device)
     ground_truth_tensor = torch.from_numpy(ground_truth).long().unsqueeze(0).to(device)
@@ -572,142 +605,171 @@ def plot_confusion_matrices(conf_mat_5, conf_mat_2, save_path='./confusion_matri
     import seaborn as sns
     import matplotlib.pyplot as plt
     
+    # 转换为百分比
+    conf_mat_5 = conf_mat_5 * 100
+    conf_mat_2 = conf_mat_2 * 100
+    
     # 修改类别名称，移除背景类
     class_names_5 = ['No Damage', 'Minor Dmg', 'Major Dmg', 'Destroyed']
     class_names_2 = ['No Damage', 'Damaged']
     
-    # 创建一个图形，包含两个子图
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
+    # 设置更大的图形尺寸和字体
+    plt.rcParams.update({'font.size': 16})
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 10))
     
-    # 5分类混淆矩阵
-    sns.heatmap(conf_mat_5, annot=True, fmt='.3f', 
+    # 4分类混淆矩阵
+    sns.heatmap(conf_mat_5, annot=True, fmt='.1f',
                 xticklabels=class_names_5, 
                 yticklabels=class_names_5,
-                cmap='Blues', ax=ax1)
-    ax1.set_title('4-Class Confusion Matrix (Building Area Only)')
-    ax1.set_ylabel('True Label')
-    ax1.set_xlabel('Predicted Label')
+                cmap='Blues', ax=ax1,
+                annot_kws={'size': 24},  # 增大矩阵中的数字
+                cbar_kws={'label': 'Percentage (%)'})
     
-    # 2分类混淆矩阵
-    sns.heatmap(conf_mat_2, annot=True, fmt='.3f', 
+    ax1.set_title('4-Class Confusion Matrix', pad=20, fontsize=22)
+    ax1.set_ylabel('True Label', fontsize=20)
+    ax1.set_xlabel('Predicted Label', fontsize=20)
+    ax1.tick_params(labelsize=18)  # 增大类别标签
+    
+    # 二分类混淆矩阵
+    sns.heatmap(conf_mat_2, annot=True, fmt='.1f',
                 xticklabels=class_names_2, 
                 yticklabels=class_names_2,
-                cmap='Blues', ax=ax2)
-    ax2.set_title('Binary Confusion Matrix (Building Area Only)')
-    ax2.set_ylabel('True Label')
-    ax2.set_xlabel('Predicted Label')
+                cmap='Blues', ax=ax2,
+                annot_kws={'size': 24},  # 增大矩阵中的数字
+                cbar_kws={'label': 'Percentage (%)'})
     
-    plt.tight_layout()
+    ax2.set_title('Binary Confusion Matrix', pad=20, fontsize=22)
+    ax2.set_ylabel('True Label', fontsize=20)
+    ax2.set_xlabel('Predicted Label', fontsize=20)
+    ax2.tick_params(labelsize=18)  # 增大类别标签
+    
+    plt.tight_layout(pad=3.0)
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
+    
 def calculate_building_f1_by_size(prediction, ground_truth, building_mask):
-    """计算不同大小建筑物的F1分数统计信息"""
-    # 标记每个独立的建筑物
+    """计算不同大小建筑物的F1分数统计信息（多分类和二分类）"""
     building_labels = measure.label(building_mask)
-    max_size = 100  # 限制最大建筑物大小为100像素
+    max_size = 100
     
-    # 创建存储结构
-    building_data = []
-    
-    # 为每个建筑物计算F1分数
-    for building_id in range(1, building_labels.max() + 1):
-        curr_building_mask = building_labels == building_id
-        building_size = np.sum(curr_building_mask)
-        
-        if building_size > max_size:
-            continue
-            
-        # 获取当前建筑物的预测和真实值
-        curr_pred = prediction[curr_building_mask]
-        curr_truth = ground_truth[curr_building_mask]
-        
-        # 转换为PyTorch张量计算F1分数
-        pred_tensor = torch.from_numpy(curr_pred).long()
-        truth_tensor = torch.from_numpy(curr_truth).long()
-        
-        # 计算F1分数
-        f1_metric = F1Score(task='multiclass', num_classes=5, average='macro')
-        f1_score = f1_metric(pred_tensor.unsqueeze(0), truth_tensor.unsqueeze(0)).item()
-        
-        building_data.append({
-            'size': building_size,
-            'f1_score': f1_score
-        })
-    
-    # 转换为数组形式
-    sizes = np.array([b['size'] for b in building_data])
-    f1_scores = np.array([b['f1_score'] for b in building_data])
-    
-    # 创建大小bins (0-20, 21-40, 41-60, 61-80, 81-100)
+    # 创建不同size bin的掩码
     size_bins = np.arange(0, 101, 20)
     bin_labels = [f'{size_bins[i]}-{size_bins[i+1]-1}' for i in range(len(size_bins)-1)]
-    
-    # 计算每个bin的统计信息
     stats = []
+    
     for i in range(len(size_bins)-1):
-        mask = (sizes >= size_bins[i]) & (sizes < size_bins[i+1])
-        if np.any(mask):
-            bin_f1_scores = f1_scores[mask]
+        bin_mask = np.zeros_like(building_mask, dtype=bool)
+        
+        # 收集该size范围内的所有建筑物
+        for building_id in range(1, building_labels.max() + 1):
+            curr_building_mask = building_labels == building_id
+            building_size = np.sum(curr_building_mask)
+            
+            if size_bins[i] <= building_size < size_bins[i+1]:
+                bin_mask |= curr_building_mask
+        
+        # 只在该size范围内的建筑物上计算整体F1分数
+        if np.any(bin_mask):
+            pred_bin = prediction[bin_mask]
+            truth_bin = ground_truth[bin_mask]
+            
+            # 转换为PyTorch张量
+            pred_tensor = torch.from_numpy(pred_bin).long()
+            truth_tensor = torch.from_numpy(truth_bin).long()
+            
+            # 计算多分类F1分数
+            f1_metric_multi = F1Score(task='multiclass', 
+                                    num_classes=5, 
+                                    average='macro',
+                                    ignore_index=0)
+            f1_score_multi = f1_metric_multi(pred_tensor.unsqueeze(0), 
+                                           truth_tensor.unsqueeze(0)).item()
+            
+            # 计算二分类F1分数
+            binary_pred = pred_bin.copy()
+            binary_truth = truth_bin.copy()
+            binary_pred[(binary_pred == 2) | (binary_pred == 3) | (binary_pred == 4)] = 2
+            binary_truth[(binary_truth == 2) | (binary_truth == 3) | (binary_truth == 4)] = 2
+            
+            binary_pred_tensor = torch.from_numpy(binary_pred).long()
+            binary_truth_tensor = torch.from_numpy(binary_truth).long()
+            
+            f1_metric_binary = F1Score(task='multiclass', 
+                                     num_classes=3, 
+                                     average='macro',
+                                     ignore_index=0)
+            f1_score_binary = f1_metric_binary(binary_pred_tensor.unsqueeze(0), 
+                                             binary_truth_tensor.unsqueeze(0)).item()
+            
             stats.append({
                 'bin': bin_labels[i],
-                'avg_f1': float(np.mean(bin_f1_scores)),  # 确保数据是Python原生类型
-                'std_f1': float(np.std(bin_f1_scores)),
-                'count': int(np.sum(mask))
+                'avg_f1_multi': float(f1_score_multi),
+                'avg_f1_binary': float(f1_score_binary),
+                'count': int(np.sum(bin_mask > 0))
             })
+            
+            # 清理内存
+            f1_metric_multi.reset()
+            f1_metric_binary.reset()
     
     print("\nBuilding size analysis:")
     for stat in stats:
-        print(f"Size {stat['bin']}: Avg F1 = {stat['avg_f1']:.3f} ± {stat['std_f1']:.3f} (n={stat['count']})")
+        print(f"Size {stat['bin']}: Multi-class F1 = {stat['avg_f1_multi']:.3f}, "
+              f"Binary F1 = {stat['avg_f1_binary']:.3f} (n={stat['count']})")
     
     return stats
 
 def plot_building_size_analysis(stats, save_path):
-    """创建并保存建筑物大小分析图表"""
+    """创建并保存建筑物大小分析图表，包含多分类和二分类的F1折线"""
     plt.figure(figsize=(12, 6))
     
-    # 准备数据
     bins = [s['bin'] for s in stats]
     counts = [s['count'] for s in stats]
-    avg_f1s = [s['avg_f1'] for s in stats]
-    std_f1s = [s['std_f1'] for s in stats]
+    f1_multi = [s['avg_f1_multi'] for s in stats]
+    f1_binary = [s['avg_f1_binary'] for s in stats]
     
-    # 创建双Y轴图表
     fig, ax1 = plt.subplots(figsize=(12, 6))
     ax2 = ax1.twinx()
     
-    # 绘制柱状图（建筑物数量）
-    bars = ax1.bar(bins, counts, alpha=0.6, color='#8884d8')
-    ax1.set_xlabel('Building Size (pixels)')
-    ax1.set_ylabel('Building Count', color='#8884d8')
-    ax1.tick_params(axis='y', labelcolor='#8884d8')
+    # IEEE标准配色
+    bar_color = '#4472C4'      # 蓝色 - 建筑物数量
+    line_color_multi = '#ED7D31'  # 橙色 - 多分类F1
+    line_color_binary = '#70AD47'  # 绿色 - 二分类F1
     
-    # 绘制折线图（F1分数）
-    line = ax2.errorbar(bins, avg_f1s, yerr=std_f1s, color='#82ca9d', 
-                       marker='o', linestyle='-', linewidth=2, 
-                       capsize=5, capthick=2)
-    ax2.set_ylabel('F1 Score', color='#82ca9d')
-    ax2.tick_params(axis='y', labelcolor='#82ca9d')
+    # 柱状图
+    bars = ax1.bar(bins, counts, alpha=0.8, color=bar_color, label='Number of Buildings')
+    ax1.set_xlabel('Building Size Range (pixels)', fontsize=14)
+    ax1.set_ylabel('Number of Buildings', color=bar_color, fontsize=14)
+    ax1.tick_params(axis='y', labelcolor=bar_color)
+    
+    # F1分数折线
+    line1 = ax2.plot(bins, f1_multi, color=line_color_multi, 
+                     marker='o', linestyle='-', linewidth=2,
+                     label='Multi-class F1-score')
+    line2 = ax2.plot(bins, f1_binary, color=line_color_binary, 
+                     marker='s', linestyle='-', linewidth=2,
+                     label='Binary F1-score')
+    
+    ax2.set_ylabel('F1-score', fontsize=14)
     ax2.set_ylim(0, 1)
     
-    # 添加图例
-    from matplotlib.lines import Line2D
+    # 合并图例（确保颜色和顺序与图表一致）
+    from matplotlib.patches import Patch
     legend_elements = [
-        bars.patches[0],
-        Line2D([0], [0], color='#82ca9d', marker='o', linestyle='-', 
-               linewidth=2, label='Average F1 Score')
+        Patch(facecolor=bar_color, alpha=0.8, label='Number of Buildings'),
+        Line2D([0], [0], color=line_color_multi, marker='o', linestyle='-', 
+               label='Multi-class F1-score'),
+        Line2D([0], [0], color=line_color_binary, marker='s', linestyle='-', 
+               label='Binary F1-score')
     ]
-    ax1.legend(legend_elements, ['Building Count', 'Average F1 Score'])
+    ax2.legend(handles=legend_elements, loc='upper right', fontsize=12)
     
-    # 添加标题和网格
-    plt.title('Building Size vs F1 Score Analysis')
+    plt.title('Building size count and F1-score', fontsize=16)
     ax1.grid(True, alpha=0.3)
     
-    # 调整布局并保存
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
-    
-    print(f"Building size analysis has been saved to {save_path}")
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--show-original', action='store_true',
@@ -718,6 +780,10 @@ def main():
                       help='Path to the ground truth mask file (for evaluation)')
     parser.add_argument('--light-background', action='store_true',
                       help='Use light background color')
+    parser.add_argument('--screenshot-mode', action='store_true',
+                    help='Screenshot mode - no original image and colorbar')
+    parser.add_argument('--size-analysis', action='store_true',
+                    help='Perform building size analysis and generate visualization')
     args = parser.parse_args()
     # Second BEST MODEL version 9.4 change loss to only Dice loss
     # model_path = './checkpoints/saved_94_enhanced_v_1.0_lr_5.0e-05_20250125_163021/best_model.pth'
@@ -744,12 +810,18 @@ def main():
     # model_path = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
     # baseline
     # model_path = ''
-    # ONLY FINE-TUNING is training
-    # model_path = ''
+    # ONLY FINE-TUNING
+    # model_path = './checkpoints/saved_104_enhanced_v_1.0_lr_5.0e-05_20250125_204017/best_model.pth'
 
-    #好像下面这个RESNET的
+    # RESNET的
+    # pretrain + fine-tuning loss: Dice+CEL *(is training)
+    # model_path = './checkpoints/saved_114_enhanced_v_1.0_lr_5.0e-05_20250126_013636/best_model.pth'
+    # ONLY pretrain
     # model_path = './training/checkpoints/best0921.pth'
-    
+    # baseline
+    # model_path = ''
+    # ONLY FINE-TUNING *(next training)
+    # model_path = './checkpoints/enhanced_v_1.0_lr_5.0e-05_20250126_222438/best_model.pth'
     ### DATASET
     # xBD dataset
     # img_home_path = "C:/Users/xiao/peng/xbd/Dataset/Validation"
@@ -770,12 +842,17 @@ def main():
     #./images/20210709_073742_79_2431_3B_Visual_clip.tif
     #./images/75cm_Bilinear_20210709.tif
     # pre_image_path = './training/images/20210915_073716_84_2440_3B_Visual_clip.tif'
+    # pre_image_path = './training/images/20220220_080303_69_2486_3B_Visual_clip.tif'
+    #pixel shift
+    # pre_image_path = './training/images/20210915_073716_84_2440_3B_Visual_clip.tif'
     #post
     #./images/20220713_075021_72_222f_3B_Visual_clip.tif
     #./images/20220709_072527_82_242b_3B_Visual_clip.tif
+    # post_image_path = './training/images/20220526_072429_40_2451_3B_Visual_clip_resized.tif'
+
     # 75cm
-    #./images/75cm_Bilinear.tif
-    #./images/75cm_Bilinear_20220921.tif
+    # pre_image_path = './training/images/75cm_Bilinear.tif'
+    # post_image_path = './training/images/75cm_Bilinear_20220921.tif'
 
     # #my dataset2
     # pre_image_path = './images/before_Zhovteneyvi.jpeg'
@@ -840,7 +917,7 @@ def main():
         )
         ground_truth_np = np.array(ground_truth_mask)
         metrics = calculate_metrics(prediction, ground_truth_np)
-        if building_mask is not None:
+        if args.size_analysis and building_mask is not None:
             print("\nAnalyzing building size distribution...")
             stats = calculate_building_f1_by_size(prediction, ground_truth_np, 
                                                 np.array(building_mask))
@@ -848,7 +925,7 @@ def main():
             # 保存建筑物大小分析图表
             size_analysis_path = f'./building_size_analysis_{Path(pre_image_path).stem}.png'
             plot_building_size_analysis(stats, size_analysis_path)
-            print(f"Building size analysis has been saved to {size_analysis_path}")        
+            print(f"Building size analysis has been saved to {size_analysis_path}")    
         print("\nMulti-classes evaluation result:")
         print(f'Accuracy: {metrics[0]:.4f}')
         print(f'F1 Score: {metrics[1]:.4f}')
@@ -869,7 +946,7 @@ def main():
         class_names_2 = ['Background', 'Undamaged', 'Damaged']
         for i, f1 in enumerate(metrics[11]):
             print(f'{class_names_2[i]}: {f1:.4f}')
-        visualize_prediction(np.array(post_image), ground_truth_np, prediction, args.light_background)
+        visualize_prediction(np.array(post_image), ground_truth_np, prediction, args.light_background, args.screenshot_mode)
 
         # 保存混淆矩阵热力图
         # 可以根据不同的模型或数据集生成不同的文件名
@@ -878,7 +955,7 @@ def main():
         print(f"Confusion matrices have been saved to {save_path}")
 
     else:
-        visualize_prediction(np.array(post_image), None, prediction, args.light_background)
+        visualize_prediction(np.array(post_image), None, prediction, args.light_background, args.screenshot_mode)
 
 if __name__ == '__main__':
     main()

@@ -498,14 +498,18 @@ ampbool = True
 save_checkpoint = True
 traintype = 'both'
 gradclip = 1.0
-
+################################################
 loadstate = False
 # loadstate = True
-# load = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
 
-# load = './checkpoints/best0921.pth'
-net = SiamUNetConCVgg19()
-# net = SiameseUNetWithResnet50Encoder()
+#VGG19
+#net = SiamUNetConCVgg19()
+#load = './training/checkpoints/v_1.3_lr_3.5e-05_20241104_010028/checkpoint_epoch60.pth'
+
+#RESNET
+net = SiameseUNetWithResnet50Encoder()
+# load = './training/checkpoints/best0921.pth'
+################################################
 epochs=60
 batch_size=4      # 使用较小的batch_size
 learning_rate=5e-5
