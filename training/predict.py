@@ -573,8 +573,8 @@ def plot_confusion_matrices(conf_mat_5, conf_mat_2, save_path='./confusion_matri
     import matplotlib.pyplot as plt
     
     # 修改类别名称，移除背景类
-    class_names_5 = ['No Damage', 'Minor', 'Major', 'Destroyed']
-    class_names_2 = ['Undamaged', 'Damaged']
+    class_names_5 = ['No Damage', 'Minor Dmg', 'Major Dmg', 'Destroyed']
+    class_names_2 = ['No Damage', 'Damaged']
     
     # 创建一个图形，包含两个子图
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
