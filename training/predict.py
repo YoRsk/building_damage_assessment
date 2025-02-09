@@ -18,7 +18,7 @@ import argparse  # 添加到文件开头
 from skimage import measure
 import torch.nn.functional as F
 from scipy import ndimage
-
+from matplotlib.lines import Line2D  # 添加这一行
 Image.MAX_IMAGE_PIXELS = None  # 禁用图像大小限制警告
 
 # 0.75m resolution
@@ -600,7 +600,114 @@ def plot_confusion_matrices(conf_mat_5, conf_mat_2, save_path='./confusion_matri
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
+def calculate_building_f1_by_size(prediction, ground_truth, building_mask):
+    """计算不同大小建筑物的F1分数统计信息"""
+    # 标记每个独立的建筑物
+    building_labels = measure.label(building_mask)
+    max_size = 100  # 限制最大建筑物大小为100像素
+    
+    # 创建存储结构
+    building_data = []
+    
+    # 为每个建筑物计算F1分数
+    for building_id in range(1, building_labels.max() + 1):
+        curr_building_mask = building_labels == building_id
+        building_size = np.sum(curr_building_mask)
+        
+        if building_size > max_size:
+            continue
+            
+        # 获取当前建筑物的预测和真实值
+        curr_pred = prediction[curr_building_mask]
+        curr_truth = ground_truth[curr_building_mask]
+        
+        # 转换为PyTorch张量计算F1分数
+        pred_tensor = torch.from_numpy(curr_pred).long()
+        truth_tensor = torch.from_numpy(curr_truth).long()
+        
+        # 计算F1分数
+        f1_metric = F1Score(task='multiclass', num_classes=5, average='macro')
+        f1_score = f1_metric(pred_tensor.unsqueeze(0), truth_tensor.unsqueeze(0)).item()
+        
+        building_data.append({
+            'size': building_size,
+            'f1_score': f1_score
+        })
+    
+    # 转换为数组形式
+    sizes = np.array([b['size'] for b in building_data])
+    f1_scores = np.array([b['f1_score'] for b in building_data])
+    
+    # 创建大小bins (0-20, 21-40, 41-60, 61-80, 81-100)
+    size_bins = np.arange(0, 101, 20)
+    bin_labels = [f'{size_bins[i]}-{size_bins[i+1]-1}' for i in range(len(size_bins)-1)]
+    
+    # 计算每个bin的统计信息
+    stats = []
+    for i in range(len(size_bins)-1):
+        mask = (sizes >= size_bins[i]) & (sizes < size_bins[i+1])
+        if np.any(mask):
+            bin_f1_scores = f1_scores[mask]
+            stats.append({
+                'bin': bin_labels[i],
+                'avg_f1': float(np.mean(bin_f1_scores)),  # 确保数据是Python原生类型
+                'std_f1': float(np.std(bin_f1_scores)),
+                'count': int(np.sum(mask))
+            })
+    
+    print("\nBuilding size analysis:")
+    for stat in stats:
+        print(f"Size {stat['bin']}: Avg F1 = {stat['avg_f1']:.3f} ± {stat['std_f1']:.3f} (n={stat['count']})")
+    
+    return stats
 
+def plot_building_size_analysis(stats, save_path):
+    """创建并保存建筑物大小分析图表"""
+    plt.figure(figsize=(12, 6))
+    
+    # 准备数据
+    bins = [s['bin'] for s in stats]
+    counts = [s['count'] for s in stats]
+    avg_f1s = [s['avg_f1'] for s in stats]
+    std_f1s = [s['std_f1'] for s in stats]
+    
+    # 创建双Y轴图表
+    fig, ax1 = plt.subplots(figsize=(12, 6))
+    ax2 = ax1.twinx()
+    
+    # 绘制柱状图（建筑物数量）
+    bars = ax1.bar(bins, counts, alpha=0.6, color='#8884d8')
+    ax1.set_xlabel('Building Size (pixels)')
+    ax1.set_ylabel('Building Count', color='#8884d8')
+    ax1.tick_params(axis='y', labelcolor='#8884d8')
+    
+    # 绘制折线图（F1分数）
+    line = ax2.errorbar(bins, avg_f1s, yerr=std_f1s, color='#82ca9d', 
+                       marker='o', linestyle='-', linewidth=2, 
+                       capsize=5, capthick=2)
+    ax2.set_ylabel('F1 Score', color='#82ca9d')
+    ax2.tick_params(axis='y', labelcolor='#82ca9d')
+    ax2.set_ylim(0, 1)
+    
+    # 添加图例
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        bars.patches[0],
+        Line2D([0], [0], color='#82ca9d', marker='o', linestyle='-', 
+               linewidth=2, label='Average F1 Score')
+    ]
+    ax1.legend(legend_elements, ['Building Count', 'Average F1 Score'])
+    
+    # 添加标题和网格
+    plt.title('Building Size vs F1 Score Analysis')
+    ax1.grid(True, alpha=0.3)
+    
+    # 调整布局并保存
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Building size analysis has been saved to {save_path}")
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--show-original', action='store_true',
@@ -733,7 +840,15 @@ def main():
         )
         ground_truth_np = np.array(ground_truth_mask)
         metrics = calculate_metrics(prediction, ground_truth_np)
-                
+        if building_mask is not None:
+            print("\nAnalyzing building size distribution...")
+            stats = calculate_building_f1_by_size(prediction, ground_truth_np, 
+                                                np.array(building_mask))
+            
+            # 保存建筑物大小分析图表
+            size_analysis_path = f'./building_size_analysis_{Path(pre_image_path).stem}.png'
+            plot_building_size_analysis(stats, size_analysis_path)
+            print(f"Building size analysis has been saved to {size_analysis_path}")        
         print("\nMulti-classes evaluation result:")
         print(f'Accuracy: {metrics[0]:.4f}')
         print(f'F1 Score: {metrics[1]:.4f}')
